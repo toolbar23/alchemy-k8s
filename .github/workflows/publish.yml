@@ -1,0 +1,44 @@
+name: Publish npm packages
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+          registry-url: https://registry.npmjs.org
+      - run: npm install --global npm@latest
+      - run: npm ci
+      - run: npm run check
+      - name: Verify release tag
+        run: |
+          version=$(node -p "require('./package.json').version")
+          test "${GITHUB_REF_NAME}" = "v${version}"
+      - name: Publish synchronized packages
+        env:
+          # Only needed to bootstrap packages that do not yet exist. Delete
+          # this repository secret after configuring npm trusted publishing.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          tag=latest
+          case "${version}" in *-*) tag=next ;; esac
+          for workspace in packages/hetzner packages/docker; do
+            name=$(node -p "require('./${workspace}/package.json').name")
+            if npm view "${name}@${version}" version >/dev/null 2>&1; then
+              echo "${name}@${version} is already published; skipping"
+            else
+              npm publish "./${workspace}" --access public --provenance --tag "${tag}"
+            fi
+          done

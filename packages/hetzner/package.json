@@ -1,0 +1,53 @@
+{
+  "name": "alchemy-hetzner-k3s",
+  "version": "0.1.0-alpha.0",
+  "description": "Production-oriented Hetzner K3s clusters for Alchemy",
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/toolbar23/alchemy-k3s.git",
+    "directory": "packages/hetzner"
+  },
+  "homepage": "https://github.com/toolbar23/alchemy-k3s#readme",
+  "bugs": "https://github.com/toolbar23/alchemy-k3s/issues",
+  "keywords": [
+    "alchemy",
+    "hetzner",
+    "k3s",
+    "kubernetes",
+    "iac"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown",
+    "prepack": "npm run build"
+  },
+  "peerDependencies": {
+    "alchemy": ">=2.0.0-beta.74 <3",
+    "effect": ">=4.0.0-rc.110 <5"
+  },
+  "dependencies": {
+    "yaml": "^2.8.1"
+  }
+}
