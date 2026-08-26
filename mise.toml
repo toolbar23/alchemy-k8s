@@ -20,3 +20,8 @@ run = [
   "npm run release:check",
   "node scripts/publish-packages.mjs --dry-run",
 ]
+
+[tasks."publish:oidc"]
+description = "Validate, push main, and create the GitHub Release used for OIDC publishing"
+depends = ["publish:dry-run"]
+run = "node scripts/create-github-release.mjs"

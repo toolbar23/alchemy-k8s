@@ -688,10 +688,17 @@ publisher:
 
 Then set each package's publishing access to **Require two-factor authentication
 and disallow tokens**. Future releases need no `NPM_TOKEN` secret. Increment the
-synchronized workspace version, push it, and publish a GitHub Release with the
-exact `v<version>` tag. The first OIDC release after the bootstrap should
-therefore use a new version such as `0.1.0-alpha.1`, not the already-published
-bootstrap version.
+synchronized workspace version, finish the JJ revision, and leave a new empty
+working-copy revision. This task runs the complete dry-run, fast-forwards and
+pushes `main` to the completed parent revision, then creates the exact
+`v<version>` GitHub Release that triggers OIDC publishing:
+
+```sh
+mise run publish:oidc
+```
+
+The first OIDC release after the bootstrap must use a version newer than the
+already-published bootstrap version.
 
 Package names are independently checked for existence before publishing, so a
 workflow retry can finish a partially completed multi-package release.
