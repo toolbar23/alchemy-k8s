@@ -212,7 +212,47 @@ Reference: [K3s secrets encryption](https://docs.k3s.io/cli/secrets-encrypt).
 
 ## Phase 1: package structure
 
-### 1.1 `alchemy-kubernetes-addons`
+### 1.1 `alchemy-s3-access`
+
+- [ ] Add `packages/s3-access` to the root workspaces.
+- [ ] Publish it as the separate `alchemy-s3-access` npm package.
+- [ ] Export a provider-neutral `S3BucketAccess` contract with `endpoint`,
+      `region`, `bucket`, `accessKeyId`, and Redacted `secretAccessKey` fields.
+- [ ] Support an optional Redacted `sessionToken` for temporary AWS STS and R2
+      credentials.
+- [ ] Support optional `forcePathStyle` for MinIO and other S3-compatible
+      providers that do not use virtual-host bucket addressing.
+- [ ] Keep bucket prefixes, snapshot retention, and other consumer policy out of
+      the access contract.
+- [ ] Keep bucket creation, encryption, versioning, retention, and deletion in
+      provider-specific resources; this package describes access, not ownership
+      or lifecycle.
+- [ ] Require provider integrations to issue separately scoped credentials per
+      consumer instead of sharing one account-wide key.
+- [ ] Keep the package independent of AWS, Cloudflare, Fly, Prisma, Hetzner, and
+      Kubernetes providers.
+- [ ] Add build, type-check, API-shape, Redacted-secret, and package-content
+      checks.
+
+Target API:
+
+```ts
+export interface S3BucketAccess {
+  endpoint: string;
+  region: string;
+  bucket: string;
+  accessKeyId: string;
+  secretAccessKey: Redacted.Redacted<string>;
+  sessionToken?: Redacted.Redacted<string>;
+  forcePathStyle?: boolean;
+}
+```
+
+Provider-specific resources or adapters produce `S3BucketAccess`; services such
+as K3s consume only this package. A disaster-recovery bucket must be managed in
+a separate retained stack so cluster destruction cannot delete its backups.
+
+### 1.2 `alchemy-kubernetes-addons`
 
 - [x] Add `packages/kubernetes-addons` to the root workspaces.
 - [ ] Publish it as `alchemy-kubernetes-addons`.
@@ -228,7 +268,7 @@ Reference: [K3s secrets encryption](https://docs.k3s.io/cli/secrets-encrypt).
       represent: safe Secret ownership and dependent readiness gates.
 - [x] Add build, type-check, test, and package-content checks.
 
-### 1.2 `alchemy-grafana`
+### 1.3 `alchemy-grafana`
 
 - [ ] Add `packages/grafana` to the root workspaces.
 - [ ] Publish it as `alchemy-grafana`.
@@ -644,6 +684,64 @@ yield *
 
 ## Phase 8: cluster gap backlog
 
+### S3 restore and automatic control-plane recovery
+
+Portable backup access and restore proof are prerequisites for replacing an
+initial control-plane server. Alchemy is not a continuously running controller:
+automatic recovery means monitoring or a scheduled CI workflow invokes the same
+idempotent Alchemy deployment after detecting an outage.
+
+S3 backup integration and restore proof (P0):
+
+- [ ] Replace the Hetzner-specific `EtcdS3Backup` credential shape with
+      `S3BucketAccess` from `alchemy-s3-access`; keep the K3s snapshot folder,
+      schedule, and retention in `Cluster` configuration.
+- [ ] Pass an optional session token and path-style selection through every K3s
+      snapshot save, list, prune, and restore operation.
+- [ ] Require the backup bucket to outlive the cluster and document a separate
+      retained stack with encrypted remote Alchemy state.
+- [ ] Persist the original K3s server token in encrypted state and prove it can
+      decrypt a snapshot after the original server has been deleted.
+- [ ] List and validate remote snapshots without relying on the unavailable
+      Kubernetes API or a Kubernetes S3 configuration Secret.
+- [ ] Reject empty, foreign-cluster, or older-than-policy snapshots before
+      restore; fail safely if K3s checksum verification identifies corruption.
+- [ ] Prove S3 restore onto a new host for a single-control-plane cluster.
+- [ ] Prove S3 restore and etcd membership reconstruction for an HA cluster.
+
+Automatic initial-control-plane recovery (P1):
+
+- [ ] Add an explicit opt-in recovery policy such as
+      `restoreOnInitialControlPlaneReplacement` and `maximumSnapshotAge`.
+- [ ] Distinguish greenfield bootstrap, an intact-server restart, deliberate
+      destruction, and physical initial-server replacement.
+- [ ] On replacement, select the newest valid snapshot within policy and restore
+      it with the original server token plus explicit S3 CLI credentials.
+- [ ] Make restore resumable and idempotent across interruption after server
+      creation, snapshot download, etcd reset, normal K3s start, and state
+      persistence.
+- [ ] Refuse recovery without a valid snapshot and original token; retain the
+      replacement and backups for diagnosis instead of bootstrapping an empty
+      cluster under the old identity.
+- [ ] Start K3s normally after reset and wait for datastore, API, and Secret
+      encryption health before changing workers.
+- [ ] Verify the API load balancer targets the replacement server.
+- [ ] Reconfigure every worker from the old initial server's private IP to the
+      replacement private IP, restart agents, and wait for Ready.
+- [ ] Remove the obsolete Kubernetes Node object only after the replacement and
+      workers are healthy.
+- [ ] Prevent two monitoring or CI invocations from restoring concurrently by
+      requiring a locked remote Alchemy state backend.
+- [ ] Document the external health-check and scheduled/event-trigger contract;
+      do not imply that Alchemy detects outages while it is not running.
+- [ ] Add controlled failure injection for every recovery checkpoint.
+- [ ] Add a `small-x86` disaster-recovery E2E that creates stateful cluster
+      data, confirms a remote snapshot, deletes the control plane, invokes the
+      recovery deployment, verifies API/workload/state recovery, and tears down
+      exact owned resources.
+- [ ] Record snapshot age, detection delay, replacement time, API recovery time,
+      worker reconnection time, total RTO, and observable RPO in the E2E report.
+
 ### P0
 
 - [ ] Implement SSH host identity verification.
@@ -651,8 +749,6 @@ yield *
 - [ ] Wait explicitly for cloud-init completion.
 - [ ] Complete single-node, worker, and HA upgrade/protection E2E.
 - [ ] Verify HCCM and CSI token rotation and rollouts.
-- [ ] Prove etcd S3 restore on single-control-plane clusters.
-- [ ] Prove etcd S3 restore on HA clusters.
 - [ ] Pin or vendor remote bootstrap and installation artifacts.
 - [ ] Pin GitHub Actions to commit SHAs.
 
@@ -663,7 +759,6 @@ yield *
 - [ ] Add K3s Secret-encryption key rotation.
 - [ ] Add Kubernetes API audit logging.
 - [ ] Enforce or strongly preflight encrypted production Alchemy state.
-- [ ] Implement control-plane replacement after restore is proven.
 
 ## Deliberately deferred
 
@@ -687,18 +782,23 @@ yield *
 - [x] 1. Add `KubernetesAddons.Secret` without patching Alchemy core.
 - [x] 2. Add composable Helm readiness without patching Alchemy core.
 - [x] 3. Enable K3s Secret encryption for new clusters.
-- [x] 4. Scaffold `alchemy-kubernetes-addons`.
-- [ ] 5. Scaffold `alchemy-grafana` credentials and resources.
-- [ ] 6. Implement the Grafana OTLP destination.
-- [ ] 7. Implement the OTEL collector gateway.
-- [ ] 8. Implement Cloudflare ExternalDNS.
-- [ ] 9. Implement cert-manager.
-- [ ] 10. Implement the Cloudflare ACME issuer.
-- [ ] 11. Add local integration tests.
-- [ ] 12. Run live Cloudflare, Grafana, and Let's Encrypt staging E2E.
-- [ ] 13. Add documentation and examples.
-- [x] 14. Add existing-cluster Secret-encryption migration.
-- [ ] 15. Complete the remaining P0 cluster security work.
+- [ ] 4. Scaffold and publish `alchemy-s3-access`.
+- [ ] 5. Integrate `S3BucketAccess` with K3s snapshots and prove
+      single-control-plane restore.
+- [ ] 6. Implement and E2E-test automatic single-control-plane recovery.
+- [ ] 7. Prove HA restore and extend recovery to HA membership reconstruction.
+- [x] 8. Scaffold `alchemy-kubernetes-addons`.
+- [ ] 9. Scaffold `alchemy-grafana` credentials and resources.
+- [ ] 10. Implement the Grafana OTLP destination.
+- [ ] 11. Implement the OTEL collector gateway.
+- [ ] 12. Implement Cloudflare ExternalDNS.
+- [ ] 13. Implement cert-manager.
+- [ ] 14. Implement the Cloudflare ACME issuer.
+- [ ] 15. Add local integration tests.
+- [ ] 16. Run live Cloudflare, Grafana, and Let's Encrypt staging E2E.
+- [ ] 17. Add documentation and examples.
+- [x] 18. Add existing-cluster Secret-encryption migration.
+- [ ] 19. Complete the remaining P0 cluster security work.
 
 Each unit should be implemented in a focused JJ revision with its own tests,
 description update, and a new empty revision afterward.
