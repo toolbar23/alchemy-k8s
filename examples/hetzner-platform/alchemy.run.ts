@@ -32,6 +32,9 @@ export default Alchemy.Stack(
     const exposeObservability = yield* Config.boolean(
       "ENABLE_OBSERVABILITY_INGRESS",
     ).pipe(Config.withDefault(false));
+    const enableRegistry = yield* Config.boolean("ENABLE_REGISTRY").pipe(
+      Config.withDefault(false),
+    );
 
     const cluster = yield* HetznerK3s.Cluster("Production", {
       k3s: {
@@ -174,6 +177,64 @@ export default Alchemy.Stack(
         metadata: { name: "api" },
       },
     });
+    let registry: KubernetesAddons.ContainerRegistryResult | undefined;
+    if (enableRegistry) {
+      const registryHost = yield* Config.string("REGISTRY_HOST");
+      const registryNamespace = yield* Kubernetes.Manifest(
+        "RegistryNamespace",
+        {
+          cluster: appNamespace.connection,
+          manifest: {
+            apiVersion: "v1",
+            kind: "Namespace",
+            metadata: { name: "registry" },
+          },
+        },
+      );
+      const registryCertificate = yield* Kubernetes.Manifest(
+        "RegistryCertificate",
+        {
+          cluster: registryNamespace.connection,
+          manifest: {
+            apiVersion: "cert-manager.io/v1",
+            kind: "Certificate",
+            metadata: {
+              name: "registry-tls",
+              namespace: registryNamespace.name,
+            },
+            spec: {
+              secretName: "registry-tls",
+              dnsNames: [registryHost],
+              issuerRef: issuer.issuerRef,
+            },
+          },
+        },
+      );
+      registry = yield* KubernetesAddons.ContainerRegistry("Images", {
+        cluster: registryCertificate.connection,
+        namespace: "registry",
+        createNamespace: false,
+        storage: {
+          endpoint: yield* Config.string("REGISTRY_S3_ENDPOINT"),
+          region: yield* Config.string("REGISTRY_S3_REGION"),
+          bucket: yield* Config.string("REGISTRY_S3_BUCKET"),
+          accessKeyId: yield* Config.string("REGISTRY_S3_ACCESS_KEY_ID"),
+          secretAccessKey: yield* Config.redacted(
+            "REGISTRY_S3_SECRET_ACCESS_KEY",
+          ),
+          forcePathStyle: yield* Config.boolean(
+            "REGISTRY_S3_FORCE_PATH_STYLE",
+          ).pipe(Config.withDefault(false)),
+        },
+        ingress: {
+          host: registryHost,
+          className: "traefik",
+          tlsSecretName: "registry-tls",
+        },
+        pullSecrets: { namespaces: ["api"], name: "private-registry" },
+      });
+    }
+    const registryPullSecret = registry?.pullSecretRefs[0];
     yield* Kubernetes.Manifest("AppDeployment", {
       cluster,
       manifest: {
@@ -184,8 +245,23 @@ export default Alchemy.Stack(
           replicas: 2,
           selector: { matchLabels: { app: "api" } },
           template: {
-            metadata: { labels: { app: "api" } },
+            metadata: {
+              labels: { app: "api" },
+              ...(registryPullSecret === undefined
+                ? {}
+                : {
+                    annotations: {
+                      "alchemy.run/registry-pull-secret-revision":
+                        registryPullSecret.resourceVersion,
+                    },
+                  }),
+            },
             spec: {
+              ...(registryPullSecret === undefined
+                ? {}
+                : {
+                    imagePullSecrets: [{ name: registryPullSecret.name }],
+                  }),
               securityContext: {
                 runAsNonRoot: true,
                 seccompProfile: { type: "RuntimeDefault" },
@@ -290,6 +366,7 @@ export default Alchemy.Stack(
       appUrl: `https://${appHost}`,
       observabilityUrl: parseable.uiUrl,
       otelEndpoint: collector?.otelEndpoint,
+      registryUrl: registry?.url,
     };
   }).pipe(Effect.catchTag("UnknownError", Effect.die)),
 );

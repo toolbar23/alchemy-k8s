@@ -623,6 +623,21 @@ is intentionally absent from stack output and plans.
 Set `ADDONS_E2E_REMOTE_STATE=true` to run the same lifecycle against the
 encrypted Cloudflare state store created by `alchemy cloudflare bootstrap`.
 
+The S3-backed registry has a separate, manually triggered lifecycle with
+independent preflight, deployment, functional, benchmark, rotation, persistence,
+and teardown phases. It deploys the registry through the public add-on API,
+pushes through its HTTPS Ingress, proves a K3s node pull, measures scheduled GC
+against S3, and recreates the add-on without deleting its images:
+
+```sh
+npm run e2e:registry:all
+```
+
+See [`scripts/registry-e2e/README.md`](scripts/registry-e2e/README.md) for the
+required Kubernetes, TLS, and `S3BucketAccess` environment. The complete suite
+is destructive only to its two stage-specific Kubernetes namespaces. The
+provider-owned bucket and its registry objects are deliberately retained.
+
 The live Cloudflare security gate creates a temporary exact-zone token with only
 `Zone Read`, proves that DNS writes receive HTTP 403, and always attempts exact
 record and token cleanup while preserving every cleanup error:

@@ -1,9 +1,9 @@
 # Complete Hetzner platform example
 
 This stack composes the cluster kernel with independent DNS, TLS, S3-backed
-observability, OTLP transport, and application resources. It deliberately uses
-Let's Encrypt staging until an operator changes the issuer environment after a
-successful smoke test.
+observability, an optional S3-backed image registry, OTLP transport, and
+application resources. It deliberately uses Let's Encrypt staging until an
+operator changes the issuer environment after a successful smoke test.
 
 Required configuration:
 
@@ -23,6 +23,11 @@ Optional configuration:
 - `K3S_BACKUP_S3_FORCE_PATH_STYLE` defaults to `false`.
 - `ENABLE_OTEL` defaults to `true`.
 - `ENABLE_OBSERVABILITY_INGRESS` defaults to `false`.
+- `ENABLE_REGISTRY` defaults to `false`. When enabled, also supply
+  `REGISTRY_HOST`, `REGISTRY_S3_ENDPOINT`, `REGISTRY_S3_REGION`,
+  `REGISTRY_S3_BUCKET`, `REGISTRY_S3_ACCESS_KEY_ID`, and
+  `REGISTRY_S3_SECRET_ACCESS_KEY`.
+- `REGISTRY_S3_FORCE_PATH_STYLE` defaults to `false`.
 
 Bootstrap the encrypted Cloudflare state store once, preview, then deploy:
 
@@ -36,7 +41,11 @@ The Zone is explicitly adopted and retained. ExternalDNS owns application
 A/AAAA/CNAME records and registry TXT records. cert-manager owns only temporary
 `_acme-challenge` records and the generated TLS Secrets. Parseable owns its
 S3-backed telemetry service, while the optional collector is the in-cluster
-credential and transport boundary.
+credential and transport boundary. The optional registry owns only its
+Kubernetes resources and creates an `api/private-registry` pull Secret; its
+bucket remains external and retained. Docker clients require a publicly trusted
+certificate, so change the demonstrated ACME issuer to production (after the
+staging proof) before using the registry outside the cluster.
 
 The K3s backup bucket is deliberately not declared by this stack. Create it in a
 separate retained infrastructure stack, enable provider-side encryption and

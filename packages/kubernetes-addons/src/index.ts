@@ -81,6 +81,23 @@ export {
 } from "./parseable.ts";
 
 export {
+  CONTAINER_REGISTRY_CHART,
+  CONTAINER_REGISTRY_CHART_VERSION,
+  CONTAINER_REGISTRY_IMAGE,
+  ContainerRegistry,
+  containerRegistryDockerConfig,
+  containerRegistryHelmValues,
+  containerRegistryHtpasswd,
+  validateContainerRegistryProps,
+  type ContainerRegistryGarbageCollectionProps,
+  type ContainerRegistryIngressProps,
+  type ContainerRegistryProps,
+  type ContainerRegistryPullSecretRef,
+  type ContainerRegistryPullSecretsProps,
+  type ContainerRegistryResult,
+} from "./container-registry.ts";
+
+export {
   kubernetesObjectReadiness,
   KubernetesReadinessError,
   type KubernetesObjectReadiness,

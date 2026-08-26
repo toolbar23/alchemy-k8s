@@ -9,6 +9,7 @@ alchemy-s3-access
 
 alchemy-kubernetes-addons
   ├─ Parseable (S3 backend + bundled UI + optional Ingress)
+  ├─ ContainerRegistry (S3 backend + required HTTPS Ingress)
   ├─ OtelCollector
   ├─ CloudflareExternalDns
   ├─ CertManager
@@ -76,6 +77,22 @@ const parseable =
       host: "observe.example.com",
       className: "traefik",
       tlsSecretName: "observe-tls",
+    },
+  });
+
+const registry =
+  yield *
+  KubernetesAddons.ContainerRegistry("Images", {
+    cluster,
+    storage: registryBucket,
+    ingress: {
+      host: "registry.example.com",
+      className: "traefik",
+      tlsSecretName: "registry-tls",
+    },
+    pullSecrets: {
+      namespaces: ["api", "workers"],
+      name: "private-registry",
     },
   });
 
@@ -811,6 +828,59 @@ unchecked restore/proof items above remain live gates: they require a retained
 S3 bucket and an encrypted, TLS, locked Postgres state backend and must not be
 marked proven from unit tests alone.
 
+## Phase 9: S3-backed container registry add-on
+
+### 9.1 Minimal registry and storage lifecycle
+
+- [x] Implement `KubernetesAddons.ContainerRegistry` for any
+      `Kubernetes.ClusterLike` using the official Zot Helm chart and the
+      multi-architecture `zot-minimal` image.
+- [x] Pin chart `0.1.122` and `ghcr.io/project-zot/zot-minimal:v2.1.20` by
+      digest.
+- [x] Consume the complete provider-neutral `S3BucketAccess`, including session
+      tokens and path-style endpoints, without placing credentials in Helm
+      values or ConfigMaps.
+- [x] Keep one replica, a ClusterIP Service, no UI, no PVC, no blob redirects,
+      no local deduplication cache, and a Recreate rollout strategy.
+- [x] Keep bucket creation and deletion external. Use a consumer-owned
+      `storagePrefix` and preserve all S3 objects when the add-on is destroyed.
+- [x] Run Zot's built-in scheduled GC every 24 hours by default, with a 24-hour
+      delay and a `02:00-04:00` UTC start window; allow explicit overrides.
+
+### 9.2 HTTPS authentication and pull credentials
+
+- [x] Require an Ingress hostname and existing TLS Secret; never expose Zot by
+      NodePort, LoadBalancer, or plaintext public HTTP.
+- [x] Generate a stable Redacted registry password and independent persisted
+      bcrypt salt, and mount only a cost-12 bcrypt htpasswd entry into Zot.
+- [x] Deny anonymous access and grant the generated account read, create,
+      update, and delete actions for every repository.
+- [x] Return the Redacted credentials for external Docker login/push.
+- [x] Create `kubernetes.io/dockerconfigjson` pull Secrets in explicitly named,
+      pre-existing application namespaces and return their references.
+- [x] Roll Zot and pull-test workloads on credential revision changes while
+      preserving no-op stability.
+- [x] Support both an add-on-owned namespace and `createNamespace: false` when
+      cert-manager or another stack owns the namespace.
+
+### 9.3 Verification and operations
+
+- [x] Test pins, validation, deterministic bcrypt, S3/session-token/path-style
+      mapping, auth policy, GC settings, pull-secret encoding, and absence of
+      credentials from Helm values.
+- [x] Render the real pinned OCI chart and verify every rendered image is pinned
+      and deterministic.
+- [x] Add separate manually triggered preflight, deploy, checks, benchmark,
+      idempotence/rotation, persistence, destroy, and complete-suite scripts.
+- [x] Deploy the registry only through its public add-on API in E2E; keep test
+      namespaces, TLS, and workload fixtures in the Alchemy stack rather than
+      applying registry YAML directly.
+- [ ] Run the complete k3d/MinIO lifecycle and record HTTPS push/pull, node
+      pull, restart recovery, GC S3 footprint, credential rotation, throughput,
+      idle resource use, destroy/recreate persistence, and exact teardown.
+- [ ] Run the same live gate on Hetzner with a retained production-like bucket,
+      public DNS, and trusted certificate.
+
 ## Deliberately deferred
 
 - [ ] Revisit Cilium only after a concrete network-policy or eBPF requirement.
@@ -854,6 +924,9 @@ marked proven from unit tests alone.
 - [x] 17. Add documentation and examples.
 - [x] 18. Add existing-cluster Secret-encryption migration.
 - [ ] 19. Complete the remaining P0 cluster security work.
+- [x] 20. Implement the S3-backed Zot container registry add-on, documentation,
+      chart release gate, and manual lifecycle harness.
+- [ ] 21. Run the local and Hetzner registry E2E/benchmark gates.
 
 Each unit should be implemented in a focused JJ revision with its own tests,
 description update, and a new empty revision afterward.

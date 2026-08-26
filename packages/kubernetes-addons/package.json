@@ -42,6 +42,9 @@
     "build": "tsdown",
     "prepack": "npm run build"
   },
+  "dependencies": {
+    "bcryptjs": "3.0.3"
+  },
   "peerDependencies": {
     "alchemy": ">=2.0.0-beta.74 <3",
     "alchemy-s3-access": ">=0.1.0-alpha.0 <1",

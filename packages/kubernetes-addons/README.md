@@ -224,6 +224,65 @@ Parseable Basic credentials without putting them in Helm values. Temporary S3
 session credentials are rejected because the pinned Parseable chart does not
 support them.
 
+## S3-backed container registry
+
+`ContainerRegistry` deploys a private Docker-compatible OCI registry using the
+headless `zot-minimal` image. S3 is authoritative; the pod has no persistent
+volume, and destroying the add-on never deletes the separately owned bucket or
+its objects:
+
+```ts
+const registry =
+  yield *
+  KubernetesAddons.ContainerRegistry("Images", {
+    cluster,
+    storage: registryBucket,
+    ingress: {
+      host: "registry.example.com",
+      className: "traefik",
+      tlsSecretName: "registry-tls",
+    },
+    pullSecrets: {
+      namespaces: ["api", "workers"],
+      name: "private-registry",
+    },
+  });
+```
+
+The HTTPS Ingress is required because Docker basic credentials must not travel
+over plaintext. The referenced TLS Secret must be in the registry namespace; the
+add-on does not install an ingress controller, manage DNS, or issue the
+certificate. Its Service remains `ClusterIP`, so the Ingress is the only public
+exposure. Blob redirects are disabled: clients talk only to the registry and do
+not need direct access to the S3 endpoint.
+
+The returned Redacted `registry.credentials.password` and username are used for
+external `docker login` and push. The add-on also writes
+`kubernetes.io/dockerconfigjson` Secrets into the explicitly listed,
+pre-existing application namespaces and returns their references. Kubernetes
+pull Secrets are namespace-local, which is why namespaces must be named rather
+than receiving one cluster-wide credential.
+
+Anonymous access is denied. The single generated account has read, create,
+update, and delete access. Its password and an independent bcrypt salt are
+stable Alchemy Random resources; Zot receives only a cost-12 bcrypt entry.
+Storage keys, optional session tokens, bcrypt data, and Docker configs go
+through write-only Secrets and never Helm values. Rotating either credential
+updates the corresponding Secret and rolls the one-replica deployment.
+
+Garbage collection runs inside Zot every 24 hours by default, starts only in the
+`02:00-04:00` UTC window, and waits 24 hours before reclaiming untagged,
+unreferenced content. `garbageCollection` can override those Zot/Go durations
+and the UTC window. `storagePrefix` defaults to `registry`, allowing the
+consumer to reserve a collision-free key prefix without putting prefix policy in
+`S3BucketAccess`.
+
+By default the add-on owns a new `registry` namespace. Set
+`createNamespace: false` when a Certificate or another stack already owns that
+namespace. Destroying an owned registry namespace also removes its pull Secret
+only when that pull Secret lives there; pull Secrets in application namespaces
+are deleted individually without deleting those namespaces.
+
 ## OpenTelemetry collector gateway
 
 `OtelCollector` is a destination adapter for any `Kubernetes.ClusterLike`. It
