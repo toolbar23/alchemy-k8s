@@ -3,15 +3,21 @@ import * as Output from "alchemy/Output";
 import { Stage, makeRandom } from "alchemy";
 import { State } from "alchemy/State";
 import * as Effect from "effect/Effect";
+import * as Redacted from "effect/Redacted";
 import {
   ipv4CidrRange,
   normalizeK3sDefinition,
 } from "../../shared/src/definition.ts";
 import { ClusterState } from "./cluster-state.ts";
-import { hardenedCloudInit, hostIdentity } from "./hardening.ts";
+import { hardenedCloudInit, sshIdentity } from "./hardening.ts";
 import { Node } from "./node.ts";
 import type { Providers } from "./providers.ts";
-import type { ClusterProps, ClusterResource, NodeResource } from "./types.ts";
+import type {
+  ClusterProps,
+  ClusterResource,
+  NodeResource,
+  ServerReference,
+} from "./types.ts";
 import {
   networkZoneFor,
   normalizeLocations,
@@ -46,6 +52,40 @@ export const productionStateWarning = (
     return undefined;
   }
   return `Production stage ${JSON.stringify(stage)} uses Alchemy state ${JSON.stringify(stateId)} without confirmed encryption at rest. Redacted Hetzner, K3s, SSH, backup, and add-on credentials require an encrypted remote state backend.`;
+};
+
+export const serverReferenceWithSshIdentities = (
+  server: Pick<ServerReference, "id" | "serverId" | "name"> & {
+    created: string;
+    ipv4?: string | undefined;
+    privateKey?: ServerReference["privateKey"] | undefined;
+  },
+  host: { publicKey: string },
+  deploy: { privateKey: string },
+  deployKey: { created: string },
+): ServerReference => {
+  const serverCreatedAt = Date.parse(server.created);
+  const deployKeyCreatedAt = Date.parse(deployKey.created);
+  if (
+    !Number.isFinite(serverCreatedAt) ||
+    !Number.isFinite(deployKeyCreatedAt)
+  ) {
+    throw new Error(
+      "Hetzner server and SSH key creation times must be RFC3339",
+    );
+  }
+  const privateKey =
+    deployKeyCreatedAt <= serverCreatedAt
+      ? Redacted.make(deploy.privateKey)
+      : server.privateKey;
+  return {
+    id: server.id,
+    serverId: server.serverId,
+    name: server.name,
+    ...(server.ipv4 === undefined ? {} : { ipv4: server.ipv4 }),
+    ...(privateKey === undefined ? {} : { privateKey }),
+    hostPublicKey: host.publicKey,
+  };
 };
 
 export const Cluster = (id: string, props: ClusterProps) =>
@@ -136,11 +176,30 @@ export const Cluster = (id: string, props: ClusterProps) =>
     const controlPlaneServers = yield* Effect.all(
       locations.map((location, index) =>
         Effect.gen(function* () {
-          const seed = yield* makeRandom(
+          const hostSeed = yield* makeRandom(
             `${id}-control-plane-${index + 1}-host-key`,
           );
-          const identity = Output.map(seed, (value) =>
-            hostIdentity(value, `${dnsName(id)}-cp-${index + 1}`),
+          const hostIdentity = Output.map(hostSeed, (value) =>
+            sshIdentity(value, `${dnsName(id)}-cp-${index + 1}`),
+          );
+          const deploySeed = yield* makeRandom(
+            `${id}-control-plane-${index + 1}-deploy-key-material`,
+          );
+          const deployIdentity = Output.map(deploySeed, (value) =>
+            sshIdentity(value, `${dnsName(id)}-cp-${index + 1}-deploy`),
+          );
+          const deployKey = yield* Hetzner.SshKey(
+            `${id}-control-plane-${index + 1}-deploy-key`,
+            {
+              publicKey: Output.map(
+                deployIdentity,
+                (resolved) => resolved.publicKey,
+              ),
+              labels: {
+                "k3s.cluster": dnsName(id),
+                "k3s.role": "server",
+              },
+            },
           );
           const replacementToken =
             index === 0 ? props.recovery?.replacementToken : undefined;
@@ -153,12 +212,13 @@ export const Cluster = (id: string, props: ClusterProps) =>
               // firewall is empty when management is private-only.
               enableIpv4: true,
               enableIpv6: false,
-              userData: Output.map(identity, (resolved) =>
+              userData: Output.map(hostIdentity, (resolved) =>
                 hardenedCloudInit(resolved, replacementToken),
               ),
               location,
               networks: [network],
               firewalls: [firewall],
+              sshKeys: [deployKey],
               deleteProtection: props.protectAgainstDeletion ?? true,
               labels: {
                 "k3s.cluster": dnsName(id),
@@ -169,11 +229,14 @@ export const Cluster = (id: string, props: ClusterProps) =>
           return {
             server,
             reference: Output.map(
-              Output.all(Output.of(server), identity),
-              ([resolved, host]) => ({
-                ...resolved,
-                hostPublicKey: host.publicKey,
-              }),
+              Output.all(
+                Output.of(server),
+                hostIdentity,
+                deployIdentity,
+                Output.of(deployKey),
+              ),
+              ([resolved, host, deploy, key]) =>
+                serverReferenceWithSshIdentities(resolved, host, deploy, key),
             ),
           };
         }),
@@ -185,11 +248,34 @@ export const Cluster = (id: string, props: ClusterProps) =>
       const servers = yield* Effect.all(
         Array.from({ length: pool.count }, (_, index) =>
           Effect.gen(function* () {
-            const seed = yield* makeRandom(
+            const hostSeed = yield* makeRandom(
               `${id}-${pool.name}-${index + 1}-host-key`,
             );
-            const identity = Output.map(seed, (value) =>
-              hostIdentity(value, `${dnsName(id)}-${pool.name}-${index + 1}`),
+            const hostIdentity = Output.map(hostSeed, (value) =>
+              sshIdentity(value, `${dnsName(id)}-${pool.name}-${index + 1}`),
+            );
+            const deploySeed = yield* makeRandom(
+              `${id}-${pool.name}-${index + 1}-deploy-key-material`,
+            );
+            const deployIdentity = Output.map(deploySeed, (value) =>
+              sshIdentity(
+                value,
+                `${dnsName(id)}-${pool.name}-${index + 1}-deploy`,
+              ),
+            );
+            const deployKey = yield* Hetzner.SshKey(
+              `${id}-${pool.name}-${index + 1}-deploy-key`,
+              {
+                publicKey: Output.map(
+                  deployIdentity,
+                  (resolved) => resolved.publicKey,
+                ),
+                labels: {
+                  "k3s.cluster": dnsName(id),
+                  "k3s.role": "agent",
+                  "k3s.pool": pool.name,
+                },
+              },
             );
             const server = yield* Hetzner.Server(
               `${id}-${pool.name}-${index + 1}`,
@@ -198,12 +284,13 @@ export const Cluster = (id: string, props: ClusterProps) =>
                 image: "ubuntu-24.04",
                 enableIpv4: true,
                 enableIpv6: false,
-                userData: Output.map(identity, (resolved) =>
+                userData: Output.map(hostIdentity, (resolved) =>
                   hardenedCloudInit(resolved, pool.replacementToken),
                 ),
                 location: pool.location,
                 networks: [network],
                 firewalls: [firewall],
+                sshKeys: [deployKey],
                 deleteProtection: props.protectAgainstDeletion ?? true,
                 labels: {
                   "k3s.cluster": dnsName(id),
@@ -215,11 +302,14 @@ export const Cluster = (id: string, props: ClusterProps) =>
             return {
               server,
               reference: Output.map(
-                Output.all(Output.of(server), identity),
-                ([resolved, host]) => ({
-                  ...resolved,
-                  hostPublicKey: host.publicKey,
-                }),
+                Output.all(
+                  Output.of(server),
+                  hostIdentity,
+                  deployIdentity,
+                  Output.of(deployKey),
+                ),
+                ([resolved, host, deploy, key]) =>
+                  serverReferenceWithSshIdentities(resolved, host, deploy, key),
               ),
             };
           }),

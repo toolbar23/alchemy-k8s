@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it, vi } from "vitest";
 import { parse } from "yaml";
-import { hardenedCloudInit, hostIdentity } from "../src/hardening.ts";
+import { hardenedCloudInit, sshIdentity } from "../src/hardening.ts";
 import {
   assertSafeRestoreVersion,
   buildRecoveryScript,
@@ -172,8 +172,8 @@ describe("Hetzner K3s disaster recovery", () => {
   });
 
   it("generates deterministic pinned host identity and hardened cloud-init", () => {
-    const identity = hostIdentity("11".repeat(32), "server-1");
-    expect(hostIdentity("11".repeat(32), "server-1")).toEqual(identity);
+    const identity = sshIdentity("11".repeat(32), "server-1");
+    expect(sshIdentity("11".repeat(32), "server-1")).toEqual(identity);
     expect(identity.publicKey).toMatch(/^ssh-ed25519 /);
     expect(identity.privateKey).toContain("BEGIN OPENSSH PRIVATE KEY");
     const directory = mkdtempSync(join(tmpdir(), "alchemy-host-key-test-"));

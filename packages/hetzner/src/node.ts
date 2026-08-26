@@ -325,6 +325,7 @@ export const NodeProvider = () => {
     read: ({ olds, output }) =>
       Effect.tryPromise({
         try: async () => {
+          if (olds.server === undefined) return output;
           let observed: NodeReference | undefined;
           try {
             observed = await observe(olds);

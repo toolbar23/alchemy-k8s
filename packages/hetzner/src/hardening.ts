@@ -12,16 +12,15 @@ const sshString = (value: Buffer | string): Buffer => {
   return Buffer.concat([uint32(bytes.length), bytes]);
 };
 
-/** Derive a stable Ed25519 host identity from an encrypted Alchemy random. */
-export const hostIdentity = (
+/** Derive a stable Ed25519 identity from an encrypted Alchemy random. */
+export const sshIdentity = (
   seedValue: Redacted.Redacted<string> | string,
   comment: string,
 ): { publicKey: string; privateKey: string } => {
   const seedHex =
     typeof seedValue === "string" ? seedValue : Redacted.value(seedValue);
   const seed = Buffer.from(seedHex, "hex");
-  if (seed.length !== 32)
-    throw new Error("SSH host seed must contain 32 bytes");
+  if (seed.length !== 32) throw new Error("SSH seed must contain 32 bytes");
   const privateDer = Buffer.concat([
     Buffer.from("302e020100300506032b657004220420", "hex"),
     seed,

@@ -4,7 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const processMock = vi.hoisted(() => ({ run: vi.fn() }));
 vi.mock("../../shared/src/process.ts", () => processMock);
 
-const { resolveServerAccess, ssh } = await import("../src/remote.ts");
+const { knownHostsEntry, resolveServerAccess, ssh } =
+  await import("../src/remote.ts");
 
 const server = {
   id: 1,
@@ -29,6 +30,9 @@ describe("verified Hetzner SSH", () => {
     expect(
       arguments_.some((argument) => argument.startsWith("UserKnownHostsFile=")),
     ).toBe(true);
+    expect(knownHostsEntry(server.ipv4, server.hostPublicKey)).toBe(
+      "203.0.113.2 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest\n",
+    );
   });
 
   it("resolves a private-only management address through the Hetzner API", async () => {

@@ -6,6 +6,10 @@ import {
   hasObservableClusterState,
 } from "../src/cluster-state.ts";
 import {
+  productionStateWarning,
+  serverReferenceWithSshIdentities,
+} from "../src/cluster.ts";
+import {
   HCCM_MANIFEST,
   HCCM_VERSION,
   SYSTEM_UPGRADE_CONTROLLER_MANIFEST,
@@ -15,12 +19,17 @@ import {
   buildInstallScript,
   createNodeReconcileLimiter,
   K3S_INSTALL_SHA256,
+  Node,
+  NodeProvider,
   nodeName,
   providerIdPatchCommand,
 } from "../src/node.ts";
 import * as Effect from "effect/Effect";
-import type { ClusterStateProps, NodeProps } from "../src/types.ts";
-import { productionStateWarning } from "../src/cluster.ts";
+import type {
+  ClusterStateProps,
+  NodeProps,
+  NodeReference,
+} from "../src/types.ts";
 import {
   buildPrepareSecretsEncryptionScript,
   parseSecretsEncryptionStatus,
@@ -295,6 +304,52 @@ Active  Key Type           Name
     expect(providerIdPatchCommand("worker-1", 123)).toContain(
       `patch node "worker-1" --type=merge -p "{\\"spec\\":{\\"providerID\\":\\"hcloud://123\\"}}"`,
     );
+  });
+
+  it("uses deterministic deploy keys for new servers and preserves legacy keys", () => {
+    const legacyPrivateKey = Redacted.make("legacy-private-key");
+    const server = {
+      id: 1,
+      serverId: 1,
+      name: "control-plane-1",
+      created: "2026-08-27T10:00:00Z",
+      privateKey: legacyPrivateKey,
+    };
+    const host = { publicKey: "ssh-ed25519 host" };
+    const deploy = { privateKey: "deterministic-private-key" };
+
+    const current = serverReferenceWithSshIdentities(server, host, deploy, {
+      created: "2026-08-27T09:59:00Z",
+    });
+    expect(Redacted.value(current.privateKey!)).toBe(
+      "deterministic-private-key",
+    );
+    expect(current.hostPublicKey).toBe(host.publicKey);
+
+    const legacy = serverReferenceWithSshIdentities(server, host, deploy, {
+      created: "2026-08-27T10:01:00Z",
+    });
+    expect(legacy.privateKey).toBe(legacyPrivateKey);
+  });
+
+  it("preserves partial create output until persisted props contain a server", async () => {
+    const output: NodeReference = {
+      logicalName: "control-plane-1",
+      name: "control-plane-1-1",
+      role: "server",
+      serverId: 1,
+      privateIp: "10.0.0.2",
+      version: "v1.35.3+k3s1",
+      server: { id: 1, serverId: 1, name: "control-plane-1" },
+    };
+    const observed = await Effect.runPromise(
+      Effect.gen(function* () {
+        const provider = yield* Node.Provider;
+        return yield* provider.read!({ olds: {}, output } as never);
+      }).pipe(Effect.provide(NodeProvider())),
+    );
+
+    expect(observed).toBe(output);
   });
 
   it("parallelizes fresh joins but serializes existing-node reconciles per cluster", async () => {

@@ -15,6 +15,11 @@ const privateKeyOf = (server: ServerReference): string => {
     : Redacted.value(server.privateKey);
 };
 
+export const knownHostsEntry = (address: string, publicKey: string): string => {
+  const hostKey = publicKey.split(/\s+/).slice(0, 2).join(" ");
+  return `${address} ${hostKey}\n`;
+};
+
 export const resolveServerAccess = async (
   server: ServerReference,
   networkCidr: string,
@@ -73,10 +78,13 @@ export const ssh = async (
   const knownHostsPath = join(directory, "known_hosts");
   try {
     await writeFile(keyPath, privateKeyOf(server), { mode: 0o600 });
-    const hostKey = server.hostPublicKey.split(/\s+/).slice(0, 2).join(" ");
-    await writeFile(knownHostsPath, `[${address}]:22 ${hostKey}\n`, {
-      mode: 0o600,
-    });
+    await writeFile(
+      knownHostsPath,
+      knownHostsEntry(address, server.hostPublicKey),
+      {
+        mode: 0o600,
+      },
+    );
     const result = await run(
       "ssh",
       [
