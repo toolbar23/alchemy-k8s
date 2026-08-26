@@ -96,17 +96,11 @@ MIME-Version: 1.0
 
 #cloud-config
 ssh_deletekeys: true
-ssh_genkeytypes: []
+ssh_keys:
+  ed25519_private: |
+${indent(identity.privateKey, 4)}
+  ed25519_public: ${JSON.stringify(identity.publicKey)}
 write_files:
-  - path: /etc/ssh/ssh_host_ed25519_key
-    owner: root:root
-    permissions: "0600"
-    content: |
-${indent(identity.privateKey, 6)}
-  - path: /etc/ssh/ssh_host_ed25519_key.pub
-    owner: root:root
-    permissions: "0644"
-    content: ${JSON.stringify(identity.publicKey)}
   - path: /etc/ssh/sshd_config.d/99-alchemy-k3s.conf
     owner: root:root
     permissions: "0644"

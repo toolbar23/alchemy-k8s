@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it, vi } from "vitest";
+import { parse } from "yaml";
 import { hardenedCloudInit, hostIdentity } from "../src/hardening.ts";
 import {
   assertSafeRestoreVersion,
@@ -190,6 +191,25 @@ describe("Hetzner K3s disaster recovery", () => {
       rmSync(directory, { recursive: true, force: true });
     }
     const userData = hardenedCloudInit(identity, "generation-2");
+    const cloudConfig = parse(
+      userData
+        .slice(userData.indexOf("#cloud-config"))
+        .split("--alchemy-k3s--")[0]!,
+    ) as {
+      ssh_deletekeys: boolean;
+      ssh_genkeytypes?: string[];
+      ssh_keys: { ed25519_private: string; ed25519_public: string };
+      write_files: Array<{ path: string }>;
+    };
+    expect(cloudConfig.ssh_deletekeys).toBe(true);
+    expect(cloudConfig.ssh_genkeytypes).toBeUndefined();
+    expect(cloudConfig.ssh_keys).toEqual({
+      ed25519_private: identity.privateKey,
+      ed25519_public: identity.publicKey,
+    });
+    expect(cloudConfig.write_files.map(({ path }) => path)).toEqual([
+      "/etc/ssh/sshd_config.d/99-alchemy-k3s.conf",
+    ]);
     expect(userData).toContain("HostKey /etc/ssh/ssh_host_ed25519_key");
     expect(userData).toContain("PasswordAuthentication no");
     expect(userData).toContain("PermitRootLogin prohibit-password");
