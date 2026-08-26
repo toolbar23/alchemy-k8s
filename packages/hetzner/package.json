@@ -1,6 +1,6 @@
 {
   "name": "alchemy-hetzner-k3s",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "description": "Production-oriented Hetzner K3s clusters for Alchemy",
   "license": "Apache-2.0",
   "type": "module",
@@ -48,7 +48,7 @@
     "effect": ">=4.0.0-rc.110 <5"
   },
   "dependencies": {
-    "alchemy-s3-access": "0.1.0-alpha.1",
+    "alchemy-s3-access": "0.1.0-alpha.2",
     "yaml": "^2.8.1"
   }
 }

@@ -1,7 +1,7 @@
 {
   "name": "alchemy-k3s-workspace",
   "private": true,
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "description": "Alchemy extensions for Hetzner and local k3s clusters",
   "license": "Apache-2.0",
   "type": "module",
@@ -23,7 +23,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "check": "npm run typecheck && npm run lint && npm test && npm run build && npm run pack:check",
+    "check": "npm run build && npm run typecheck && npm run lint && npm test && npm run pack:check",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint . && npm run format:check",
