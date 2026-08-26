@@ -5,6 +5,8 @@ the normal `npm test` path. Every cloud command requires an explicit profile:
 
 - `single-x86`: one schedulable CX23 control plane in Nuremberg;
 - `worker-x86`: one CX23 control plane and one CX23 worker in Nuremberg;
+- `small-x86`: one CX23 control plane in Nuremberg and three CX23 workers across
+  Nuremberg, Falkenstein, and Helsinki;
 - `ha-x86`: three CX23 control planes and three CX23 workers across Nuremberg,
   Falkenstein, and Helsinki.
 

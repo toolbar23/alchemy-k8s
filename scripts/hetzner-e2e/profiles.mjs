@@ -28,6 +28,34 @@ export const PROFILES = Object.freeze({
       }),
     ]),
   }),
+  "small-x86": Object.freeze({
+    controlPlane: Object.freeze({
+      count: 1,
+      serverType: "cx23",
+      locations: Object.freeze(["nbg1"]),
+    }),
+    scheduleWorkloadsOnControlPlane: false,
+    workerPools: Object.freeze([
+      Object.freeze({
+        name: "nbg",
+        serverType: "cx23",
+        location: "nbg1",
+        count: 1,
+      }),
+      Object.freeze({
+        name: "fsn",
+        serverType: "cx23",
+        location: "fsn1",
+        count: 1,
+      }),
+      Object.freeze({
+        name: "hel",
+        serverType: "cx23",
+        location: "hel1",
+        count: 1,
+      }),
+    ]),
+  }),
   "ha-x86": Object.freeze({
     controlPlane: Object.freeze({
       count: 3,

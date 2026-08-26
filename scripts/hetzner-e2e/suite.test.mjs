@@ -32,6 +32,7 @@ describe("Hetzner E2E profiles", () => {
     expect(Object.keys(PROFILES)).toEqual([
       "single-x86",
       "worker-x86",
+      "small-x86",
       "ha-x86",
     ]);
     expect(
@@ -40,7 +41,19 @@ describe("Hetzner E2E profiles", () => {
     expect(
       expectedServerCount("worker-x86", baselineDesired("worker-x86")),
     ).toBe(2);
+    expect(expectedServerCount("small-x86", baselineDesired("small-x86"))).toBe(
+      4,
+    );
     expect(expectedServerCount("ha-x86", baselineDesired("ha-x86"))).toBe(6);
+    expect(PROFILES["small-x86"]).toMatchObject({
+      controlPlane: { count: 1, locations: ["nbg1"] },
+      scheduleWorkloadsOnControlPlane: false,
+      workerPools: [
+        { name: "nbg", count: 1, location: "nbg1" },
+        { name: "fsn", count: 1, location: "fsn1" },
+        { name: "hel", count: 1, location: "hel1" },
+      ],
+    });
   });
 
   it("renders only profile-owned mutable worker settings", () => {
