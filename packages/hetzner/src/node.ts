@@ -3,6 +3,7 @@ import { isResolved } from "alchemy";
 import * as Provider from "alchemy/Provider";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
+import * as Semaphore from "effect/Semaphore";
 import { assertSameMinor } from "../../shared/src/definition.ts";
 import { resolveChannelVersion } from "../../shared/src/channel.ts";
 import {
@@ -34,6 +35,16 @@ export const nodeName = (logicalName: string, serverId: number): string => {
   return `${logicalName.slice(0, 63 - suffix.length).replace(/-$/g, "")}${suffix}`;
 };
 
+export const providerIdPatchCommand = (
+  name: string,
+  serverId: number,
+): string => {
+  const payload = JSON.stringify({
+    spec: { providerID: `hcloud://${serverId}` },
+  });
+  return `k3s kubectl patch node ${JSON.stringify(name)} --type=merge -p ${JSON.stringify(payload)}`;
+};
+
 const installArguments = (
   props: NodeProps,
   privateIp: string,
@@ -45,6 +56,10 @@ const installArguments = (
     props.name,
     "--node-ip",
     privateIp,
+    "--kubelet-arg",
+    "cloud-provider=external",
+    "--kubelet-arg",
+    `provider-id=hcloud://${props.server.serverId}`,
   ];
   if (props.initialServer) {
     args.push(
@@ -60,8 +75,6 @@ const installArguments = (
       "servicelb",
       "--disable",
       "local-storage",
-      "--kubelet-arg",
-      "cloud-provider=external",
       "--etcd-snapshot-schedule-cron",
       props.etcdSnapshots.schedule,
       "--etcd-snapshot-retention",
@@ -79,8 +92,6 @@ const installArguments = (
   } else if (props.role === "server") {
     args.push(
       "--disable-cloud-controller",
-      "--kubelet-arg",
-      "cloud-provider=external",
       "--etcd-snapshot-schedule-cron",
       props.etcdSnapshots.schedule,
       "--etcd-snapshot-retention",
@@ -153,7 +164,14 @@ export const buildInstallScript = (
   const args = installArguments(props, privateIp, token)
     .map(shellQuote)
     .join(" ");
-  return `set -euo pipefail\ncurl -sfL https://get.k3s.io | ${environment} sh -s - ${args}\n`;
+  return `set -euo pipefail
+private_interface=$(ip -o -4 addr show | awk -v address=${shellQuote(privateIp)} 'index($4, address "/") == 1 { print $2; exit }')
+if [ -z "$private_interface" ]; then
+  echo "Unable to find the interface for private IP ${privateIp}" >&2
+  exit 1
+fi
+curl -sfL https://get.k3s.io | ${environment} sh -s - ${args} '--flannel-iface' "$private_interface"
+`;
 };
 
 const waitForNode = async (
@@ -213,8 +231,26 @@ const observe = async (
   };
 };
 
-export const NodeProvider = () =>
-  Provider.succeed(Node, {
+export const createNodeReconcileLimiter = () => {
+  const clusterSemaphores = new Map<string, Semaphore.Semaphore>();
+  return <A, E, R>(
+    cluster: string,
+    serialize: boolean,
+    operation: Effect.Effect<A, E, R>,
+  ): Effect.Effect<A, E, R> => {
+    if (!serialize) return operation;
+    let semaphore = clusterSemaphores.get(cluster);
+    if (semaphore === undefined) {
+      semaphore = Semaphore.makeUnsafe(1);
+      clusterSemaphores.set(cluster, semaphore);
+    }
+    return semaphore.withPermit(operation);
+  };
+};
+
+export const NodeProvider = () => {
+  const limitReconcile = createNodeReconcileLimiter();
+  return Provider.succeed(Node, {
     stables: ["logicalName", "role"],
     read: ({ olds }) =>
       Effect.tryPromise({
@@ -238,8 +274,8 @@ export const NodeProvider = () =>
         }
         return undefined;
       }),
-    reconcile: ({ news, olds, output }) =>
-      Effect.tryPromise({
+    reconcile: ({ news, olds, output }) => {
+      const operation = Effect.tryPromise({
         try: async () => {
           const desiredVersion = news.initialServer
             ? await resolveChannelVersion(news.k3s.channel)
@@ -286,6 +322,7 @@ export const NodeProvider = () =>
           const admin = news.initialServer
             ? news.server
             : news.bootstrap!.server;
+          await ssh(admin, providerIdPatchCommand(desiredName, news.server.id));
           await waitForNode(admin, desiredName);
           if (replacingServer && output !== undefined) {
             await drainNode(admin, output.name);
@@ -311,7 +348,13 @@ export const NodeProvider = () =>
         },
         catch: (cause) =>
           new Error(`Failed to reconcile K3s node ${news.name}`, { cause }),
-      }),
+      });
+      return limitReconcile(
+        news.apiEndpoint,
+        output !== undefined && !news.initialServer,
+        operation,
+      );
+    },
     delete: ({ olds, output }) =>
       Effect.tryPromise({
         try: async () => {
@@ -334,3 +377,4 @@ export const NodeProvider = () =>
           new Error(`Failed to remove K3s node ${output.name}`, { cause }),
       }),
   });
+};

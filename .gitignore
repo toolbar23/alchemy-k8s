@@ -1,7 +1,8 @@
+.env
 node_modules/
 dist/
 coverage/
+test-results/
 .alchemy/
 *.tgz
 .DS_Store
-

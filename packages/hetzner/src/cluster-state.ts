@@ -11,8 +11,8 @@ import {
 import type { ClusterVersion } from "../../shared/src/types.ts";
 import {
   CSI_MANIFEST,
+  HCCM_MANIFEST,
   SYSTEM_UPGRADE_CONTROLLER_MANIFEST,
-  hccmManifest,
   systemUpgradePlans,
 } from "./manifests.ts";
 import { k3sVersion, ssh, sshScript } from "./remote.ts";
@@ -36,8 +36,23 @@ interface KubeconfigDocument {
 
 const admin = (props: ClusterStateProps): NodeReference => {
   const node = props.controlPlanes[0];
-  if (node === undefined) throw new Error("Cluster has no control-plane node");
+  if (node == null) throw new Error("Cluster has no control-plane node");
   return node;
+};
+
+export const hasObservableClusterState = (
+  props: ClusterStateProps,
+): boolean => {
+  const firstControlPlane = props.controlPlanes?.[0];
+  return (
+    firstControlPlane !== null &&
+    typeof firstControlPlane === "object" &&
+    firstControlPlane.server !== null &&
+    typeof firstControlPlane.server === "object" &&
+    props.loadBalancer !== null &&
+    typeof props.loadBalancer === "object" &&
+    typeof props.loadBalancer.ipv4 === "string"
+  );
 };
 
 const endpoint = (props: ClusterStateProps): string => {
@@ -46,7 +61,7 @@ const endpoint = (props: ClusterStateProps): string => {
   return `https://${props.loadBalancer.ipv4}:6443`;
 };
 
-const addonScript = (props: ClusterStateProps): string => {
+export const buildAddonScript = (props: ClusterStateProps): string => {
   const token = Redacted.value(props.hcloudToken);
   const tokenBase64 = Buffer.from(token).toString("base64");
   const networkBase64 = Buffer.from(props.networkName).toString("base64");
@@ -60,11 +75,20 @@ const addonScript = (props: ClusterStateProps): string => {
   return `set -euo pipefail
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 printf %s ${JSON.stringify(hcloudSecret)} | base64 -d | kubectl apply -f -
-kubectl apply -f ${JSON.stringify(hccmManifest(props.k3s.channel))}
+kubectl apply -f ${JSON.stringify(HCCM_MANIFEST)}
 kubectl -n kube-system set env deployment/hcloud-cloud-controller-manager HCLOUD_LOAD_BALANCERS_NETWORK_ZONE=${JSON.stringify(props.networkZone)} HCLOUD_LOAD_BALANCERS_USE_PRIVATE_IP=true
 printf %s ${JSON.stringify(csiSecret)} | base64 -d | kubectl apply -f -
 kubectl apply -f ${JSON.stringify(CSI_MANIFEST)}
 kubectl apply -f ${JSON.stringify(SYSTEM_UPGRADE_CONTROLLER_MANIFEST)}
+for attempt in $(seq 1 60); do
+  kubectl get crd plans.upgrade.cattle.io >/dev/null 2>&1 && break
+  if [ "$attempt" -eq 60 ]; then
+    echo "Timed out waiting for plans.upgrade.cattle.io to appear" >&2
+    exit 1
+  fi
+  sleep 5
+done
+kubectl wait --for=condition=Established crd/plans.upgrade.cattle.io --timeout=5m
 printf %s ${JSON.stringify(plans)} | base64 -d | kubectl apply -f -
 kubectl -n kube-system rollout status deployment/hcloud-cloud-controller-manager --timeout=5m
 kubectl -n kube-system rollout status deployment/hcloud-csi-controller --timeout=5m
@@ -186,11 +210,13 @@ export const ClusterProvider = () =>
   Provider.succeed(ClusterState, {
     stables: ["kubeconfigPath", "topologyFingerprint"],
     read: ({ fqn, olds }) =>
-      Effect.tryPromise({
-        try: () => observe(fqn, olds),
-        catch: (cause) =>
-          new Error("Unable to inspect Hetzner K3s cluster", { cause }),
-      }),
+      hasObservableClusterState(olds)
+        ? Effect.tryPromise({
+            try: () => observe(fqn, olds),
+            catch: (cause) =>
+              new Error("Unable to inspect Hetzner K3s cluster", { cause }),
+          })
+        : Effect.succeed(undefined),
     diff: ({ news, output }) =>
       Effect.sync(() => {
         const fingerprint = (news as { topologyFingerprint?: unknown })
@@ -209,7 +235,11 @@ export const ClusterProvider = () =>
     reconcile: ({ fqn, news }) =>
       Effect.tryPromise({
         try: async () => {
-          await sshScript(admin(news).server, addonScript(news), 15 * 60_000);
+          await sshScript(
+            admin(news).server,
+            buildAddonScript(news),
+            15 * 60_000,
+          );
           const observed = await observe(fqn, news);
           if (observed === undefined)
             throw new Error("Cluster disappeared after add-on installation");

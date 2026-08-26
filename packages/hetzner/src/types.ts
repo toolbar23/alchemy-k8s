@@ -20,6 +20,8 @@ export interface WorkerPool {
   serverType: string;
   location: string;
   count: number;
+  /** Changing this value performs a create-first rolling replacement. */
+  replacementToken?: string;
   labels?: Record<string, string>;
   taints?: string[];
 }
@@ -89,10 +91,10 @@ export interface NodeProps {
   name: string;
   role: "server" | "agent";
   initialServer: boolean;
+  /** Internal revision that re-runs bootstrap when node configuration changes. */
+  bootstrapRevision: number;
   server: ServerReference;
   bootstrap?: NodeReference;
-  /** Pure dependency edge used to serialize a pool. */
-  after?: number;
   k3s: NormalizedK3sDefinition;
   networkCidr: string;
   apiEndpoint: string;

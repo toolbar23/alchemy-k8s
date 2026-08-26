@@ -88,6 +88,11 @@ For one control-plane server, scheduling remains disabled there by default, so
 at least one worker is required. Set `scheduleWorkloadsOnControlPlane: true`
 only when the single-node tradeoff is intentional.
 
+Initial provisioning waits for the first control-plane server to initialize the
+cluster, then joins the remaining control-plane servers and workers in parallel.
+Reconciliation of existing nodes remains serialized per cluster, so upgrades and
+create-first replacements still roll one node at a time.
+
 ### Upgrades and recovery
 
 The minor is pinned in code (`v1.35` in the example). Initial provisioning

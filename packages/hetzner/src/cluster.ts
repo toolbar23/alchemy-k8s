@@ -109,6 +109,11 @@ export const Cluster = (id: string, props: ClusterProps) =>
           Hetzner.Server(`${id}-${pool.name}-${index + 1}`, {
             serverType: pool.serverType,
             image: "ubuntu-24.04",
+            ...(pool.replacementToken === undefined
+              ? {}
+              : {
+                  userData: `# Alchemy K3s worker replacement: ${pool.replacementToken}`,
+                }),
             location: pool.location,
             networks: [network],
             firewalls: [firewall],
@@ -161,14 +166,13 @@ export const Cluster = (id: string, props: ClusterProps) =>
     const controlPlanes: NodeResource[] = [];
     for (const [index, server] of controlPlaneServers.entries()) {
       const initial = index === 0;
-      const previous = controlPlanes[index - 1];
       const node = yield* Node(`${id}-control-plane-node-${index + 1}`, {
         name: dnsName(`${id}-cp-${index + 1}`),
         role: "server",
         initialServer: initial,
+        bootstrapRevision: 2,
         server,
         ...(initial ? {} : { bootstrap: controlPlanes[0]! }),
-        ...(previous === undefined ? {} : { after: previous.serverId }),
         k3s,
         networkCidr,
         apiEndpoint: apiAddress,
@@ -180,7 +184,6 @@ export const Cluster = (id: string, props: ClusterProps) =>
     }
     const workers: NodeResource[] = [];
     for (const pool of props.workerPools) {
-      let previous: NodeResource | undefined;
       for (const [index, server] of (
         workerServers.get(pool.name) ?? []
       ).entries()) {
@@ -188,9 +191,9 @@ export const Cluster = (id: string, props: ClusterProps) =>
           name: dnsName(`${id}-${pool.name}-${index + 1}`),
           role: "agent",
           initialServer: false,
+          bootstrapRevision: 2,
           server,
           bootstrap: controlPlanes[0]!,
-          ...(previous === undefined ? {} : { after: previous.serverId }),
           k3s,
           networkCidr,
           apiEndpoint: apiAddress,
@@ -200,7 +203,6 @@ export const Cluster = (id: string, props: ClusterProps) =>
           etcdSnapshots,
         });
         workers.push(node);
-        previous = node;
       }
     }
     const topologyFingerprint = JSON.stringify({

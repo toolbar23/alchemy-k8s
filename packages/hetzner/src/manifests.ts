@@ -1,10 +1,10 @@
 import type { NormalizedK3sDefinition } from "../../shared/src/types.ts";
 
 export const CSI_VERSION = "v2.22.1";
+export const HCCM_VERSION = "v1.35.0";
 export const SYSTEM_UPGRADE_CONTROLLER_VERSION = "v0.20.1";
 
-export const hccmManifest = (channel: `v1.${number}`): string =>
-  `https://github.com/hetznercloud/hcloud-cloud-controller-manager/releases/download/${channel}.0/ccm-networks.yaml`;
+export const HCCM_MANIFEST = `https://github.com/hetznercloud/hcloud-cloud-controller-manager/releases/download/${HCCM_VERSION}/ccm-networks.yaml`;
 export const CSI_MANIFEST = `https://raw.githubusercontent.com/hetznercloud/csi-driver/${CSI_VERSION}/deploy/kubernetes/hcloud-csi.yml`;
 export const SYSTEM_UPGRADE_CONTROLLER_MANIFEST = `https://github.com/rancher/system-upgrade-controller/releases/download/${SYSTEM_UPGRADE_CONTROLLER_VERSION}/system-upgrade-controller.yaml`;
 
