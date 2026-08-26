@@ -9,7 +9,7 @@ for (const directory of packages) {
     readFileSync(`${directory}/package.json`, "utf8"),
   );
   versions.add(manifest.version);
-  const result = JSON.parse(
+  const packOutput = JSON.parse(
     execFileSync(
       "npm",
       ["pack", "--dry-run", "--ignore-scripts", "--json", `./${directory}`],
@@ -17,7 +17,12 @@ for (const directory of packages) {
         encoding: "utf8",
       },
     ),
-  )[0];
+  );
+  const result = Array.isArray(packOutput)
+    ? packOutput[0]
+    : packOutput[manifest.name];
+  if (result === undefined)
+    throw new Error(`${manifest.name} was missing from npm pack output`);
   const names = new Set(result.files.map((file) => file.path));
   for (const required of [
     "package.json",

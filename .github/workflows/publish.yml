@@ -18,7 +18,7 @@ jobs:
           node-version: 24
           package-manager-cache: false
           registry-url: https://registry.npmjs.org
-      - run: npm install --global npm@latest
+      - run: npm install --global npm@12.0.2
       - run: npm ci
       - run: npm run check
       - name: Verify release tag
@@ -26,10 +26,6 @@ jobs:
           version=$(node -p "require('./package.json').version")
           test "${GITHUB_REF_NAME}" = "v${version}"
       - name: Publish synchronized packages
-        env:
-          # Only needed to bootstrap packages that do not yet exist. Delete
-          # this repository secret after configuring npm trusted publishing.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           version=$(node -p "require('./package.json').version")
           tag=latest

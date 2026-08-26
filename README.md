@@ -230,32 +230,52 @@ does not emulate EKS image builds, registries, or workload identity.
 ## Development and releases
 
 ```sh
-npm install
+npm ci
 npm run check
 ```
 
-The packages are versioned together. GitHub Actions validates every pull request
-and push. Publishing is triggered by a GitHub Release whose tag exactly matches
-the workspace version (for example `v0.1.0-alpha.0`). The release workflow uses
-npm trusted publishing/OIDC and provenance.
+The repository pins npm 12 for local development, CI, and publishing. Dependency
+install scripts are denied unless they are explicitly reviewed and added to the
+root `allowScripts` policy.
 
-Because npm's trusted publisher is configured from an existing package's
-settings, the first release needs a one-time granular automation token in the
-GitHub repository secret `NPM_TOKEN`. Give it a short expiry and the minimum
-publish access npm permits for new packages, publish the first release,
-configure both trusted publishers, and then delete the secret. Subsequent
-releases need no npm token.
+The packages are versioned together. GitHub Actions validates every pull request
+and push. After the packages have been bootstrapped, publishing is triggered by
+a GitHub Release whose tag exactly matches the workspace version. The release
+workflow uses npm trusted publishing/OIDC and provenance, with no npm token in
+GitHub.
+
+npm trusted publishers can only be configured for packages that already exist.
+Bootstrap both package names interactively from a trusted workstation using npm
+2FA:
+
+```sh
+npm ci
+npm run check
+npm publish ./packages/hetzner --access public --tag next --provenance=false
+npm publish ./packages/docker --access public --tag next --provenance=false
+```
+
+The interactive commands prompt for 2FA. Provenance is disabled only for this
+one-time local bootstrap because npm provenance requires a supported CI
+environment.
 
 Prerelease versions are published under npm's `next` tag; stable versions use
 `latest`.
 
-Before the first release, configure each package on npmjs.com with this trusted
+After the bootstrap, configure each package on npmjs.com with this trusted
 publisher:
 
 - organization/user: `toolbar23`
 - repository: `alchemy-k3s`
 - workflow: `publish.yml`
 - allowed action: `npm publish`
+
+Then set each package's publishing access to **Require two-factor authentication
+and disallow tokens**. Future releases need no `NPM_TOKEN` secret. Increment the
+synchronized workspace version, push it, and publish a GitHub Release with the
+exact `v<version>` tag. The first OIDC release after the bootstrap should
+therefore use a new version such as `0.1.0-alpha.1`, not the already-published
+bootstrap version.
 
 Package names are independently checked for existence before publishing, so a
 workflow retry can finish a partially completed two-package release.
