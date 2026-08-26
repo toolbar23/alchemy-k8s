@@ -28,10 +28,10 @@ Alchemy's generic Kubernetes resources.
 
 The local provider is not yet production-ready for high-value clusters. The
 largest security and recovery gaps are SSH host identity verification, explicit
-sshd hardening, Secret encryption at rest, full upgrade/protection E2E coverage,
+sshd hardening, full upgrade/protection and encryption-migration E2E coverage,
 and a proven etcd restore procedure. The add-on architecture for OTEL,
-ExternalDNS, cert-manager, and Let's Encrypt should remain outside the core
-cluster resource.
+ExternalDNS, cert-manager, and Let's Encrypt remains outside the core cluster
+resource.
 
 The target is not feature parity with the upstream CLI. The target is a smaller
 surface with safer declarative lifecycle behavior and separate composable
@@ -125,33 +125,33 @@ are useful even when the local implementation uses a different architecture.
 
 ### Summary matrix
 
-| Control                              | `alchemy-hetzner-k3s`                                                          | `vitobotta/hetzner-k3s`                                                                                             | Assessment                                                                   |
-| ------------------------------------ | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| SSH server host verification         | Disabled with `StrictHostKeyChecking=no` and a null known-hosts file           | Disabled in the SSH client                                                                                          | Critical gap in both                                                         |
-| SSH client key scope                 | Unique Alchemy-generated Ed25519 key per server                                | Shared generated or existing key                                                                                    | Local is narrower                                                            |
-| SSH password authentication          | Relies on Ubuntu image defaults                                                | Explicitly disabled                                                                                                 | Local gap                                                                    |
-| Root SSH                             | Key-based root access; no explicit local hardening                             | `PermitRootLogin prohibit-password`                                                                                 | Upstream is explicit and safer                                               |
-| SSH source CIDRs                     | Required explicit sources                                                      | Defaults commonly open                                                                                              | Local safer default                                                          |
-| Kubernetes API source CIDRs          | Direct masters restricted; mandatory public LB remains reachable               | Configurable but commonly open                                                                                      | Local partial improvement                                                    |
-| Public NodePorts                     | Closed                                                                         | Open by default, optional disable                                                                                   | Local safer default                                                          |
-| Public node interfaces               | Always enabled                                                                 | Can be disabled                                                                                                     | Upstream supports a stronger topology                                        |
-| Private management path              | Not available                                                                  | Private SSH/network modes available                                                                                 | Local gap                                                                    |
-| Node host firewall                   | None                                                                           | Optional                                                                                                            | Local gap                                                                    |
-| Host-firewall credential handling    | Not applicable                                                                 | Full Hetzner token is embedded in a mode-`0755` script; [#716](https://github.com/vitobotta/hetzner-k3s/issues/716) | Upstream security issue avoided locally                                      |
-| CNI encryption                       | None                                                                           | Supported                                                                                                           | Local gap                                                                    |
-| Kubernetes Secret encryption at rest | Not yet enabled                                                                | Not built in by default                                                                                             | Gap in both                                                                  |
-| Volume encryption                    | Not supported                                                                  | Not supported; [#607](https://github.com/vitobotta/hetzner-k3s/issues/607)                                          | Gap in both; do not claim encrypted volumes                                  |
-| API audit logging                    | Not enabled                                                                    | Not a default hardening feature                                                                                     | Gap in both                                                                  |
-| CIS profile                          | Not enabled                                                                    | Not a default hardening feature                                                                                     | Gap in both                                                                  |
-| Pod Security admission policy        | Not configured                                                                 | Not a default hardening feature                                                                                     | Gap in both                                                                  |
-| gVisor                               | Not supported                                                                  | Open [PR #771](https://github.com/vitobotta/hetzner-k3s/pull/771)                                                   | Missing in released versions                                                 |
-| Cloud provider token                 | Stored in HCCM and CSI Secrets and Redacted Alchemy state                      | Stored in cluster configuration/Secrets                                                                             | Same unavoidable runtime privilege; state and etcd must be encrypted         |
-| Token rotation                       | Secret reapplied but HCCM/CSI rollout not deterministic                        | Historical credential/config drift reports                                                                          | Local partial gap                                                            |
-| Kubeconfig permissions               | `0600`                                                                         | `0600`                                                                                                              | Good in both                                                                 |
-| Deletion blast radius                | Exact owned resources plus default deletion protection                         | Historical project-deletion bug, later fixed                                                                        | Local architecture safer                                                     |
-| Remote install integrity             | K3s shell installer plus version-tagged component manifests; no content hashes | Release binaries/workflows lack a complete checksum/signature/SBOM chain                                            | Supply-chain gap in both                                                     |
-| CI dependency pinning                | GitHub Actions pinned by tags, not commit SHAs                                 | Third-party Actions pinned by tags                                                                                  | Gap in both                                                                  |
-| Release provenance                   | npm OIDC provenance                                                            | Release workflow without complete checksums, signatures, or SBOM                                                    | Local npm publication is stronger, but source Actions still need SHA pinning |
+| Control                              | `alchemy-hetzner-k3s`                                                                        | `vitobotta/hetzner-k3s`                                                                                             | Assessment                                                                   |
+| ------------------------------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| SSH server host verification         | Disabled with `StrictHostKeyChecking=no` and a null known-hosts file                         | Disabled in the SSH client                                                                                          | Critical gap in both                                                         |
+| SSH client key scope                 | Unique Alchemy-generated Ed25519 key per server                                              | Shared generated or existing key                                                                                    | Local is narrower                                                            |
+| SSH password authentication          | Relies on Ubuntu image defaults                                                              | Explicitly disabled                                                                                                 | Local gap                                                                    |
+| Root SSH                             | Key-based root access; no explicit local hardening                                           | `PermitRootLogin prohibit-password`                                                                                 | Upstream is explicit and safer                                               |
+| SSH source CIDRs                     | Required explicit sources                                                                    | Defaults commonly open                                                                                              | Local safer default                                                          |
+| Kubernetes API source CIDRs          | Direct masters restricted; mandatory public LB remains reachable                             | Configurable but commonly open                                                                                      | Local partial improvement                                                    |
+| Public NodePorts                     | Closed                                                                                       | Open by default, optional disable                                                                                   | Local safer default                                                          |
+| Public node interfaces               | Always enabled                                                                               | Can be disabled                                                                                                     | Upstream supports a stronger topology                                        |
+| Private management path              | Not available                                                                                | Private SSH/network modes available                                                                                 | Local gap                                                                    |
+| Node host firewall                   | None                                                                                         | Optional                                                                                                            | Local gap                                                                    |
+| Host-firewall credential handling    | Not applicable                                                                               | Full Hetzner token is embedded in a mode-`0755` script; [#716](https://github.com/vitobotta/hetzner-k3s/issues/716) | Upstream security issue avoided locally                                      |
+| CNI encryption                       | None                                                                                         | Supported                                                                                                           | Local gap                                                                    |
+| Kubernetes Secret encryption at rest | Enabled by default with `secretbox` where supported; guarded migration for existing clusters | Not built in by default                                                                                             | Local advantage; live migration evidence still required                      |
+| Volume encryption                    | Not supported                                                                                | Not supported; [#607](https://github.com/vitobotta/hetzner-k3s/issues/607)                                          | Gap in both; do not claim encrypted volumes                                  |
+| API audit logging                    | Not enabled                                                                                  | Not a default hardening feature                                                                                     | Gap in both                                                                  |
+| CIS profile                          | Not enabled                                                                                  | Not a default hardening feature                                                                                     | Gap in both                                                                  |
+| Pod Security admission policy        | Not configured                                                                               | Not a default hardening feature                                                                                     | Gap in both                                                                  |
+| gVisor                               | Not supported                                                                                | Open [PR #771](https://github.com/vitobotta/hetzner-k3s/pull/771)                                                   | Missing in released versions                                                 |
+| Cloud provider token                 | Stored in HCCM and CSI Secrets and Redacted Alchemy state                                    | Stored in cluster configuration/Secrets                                                                             | Same unavoidable runtime privilege; state and etcd must be encrypted         |
+| Token rotation                       | Secret reapplied but HCCM/CSI rollout not deterministic                                      | Historical credential/config drift reports                                                                          | Local partial gap                                                            |
+| Kubeconfig permissions               | `0600`                                                                                       | `0600`                                                                                                              | Good in both                                                                 |
+| Deletion blast radius                | Exact owned resources plus default deletion protection                                       | Historical project-deletion bug, later fixed                                                                        | Local architecture safer                                                     |
+| Remote install integrity             | K3s shell installer plus version-tagged component manifests; no content hashes               | Release binaries/workflows lack a complete checksum/signature/SBOM chain                                            | Supply-chain gap in both                                                     |
+| CI dependency pinning                | GitHub Actions pinned by tags, not commit SHAs                                               | Third-party Actions pinned by tags                                                                                  | Gap in both                                                                  |
+| Release provenance                   | npm OIDC provenance                                                                          | Release workflow without complete checksums, signatures, or SBOM                                                    | Local npm publication is stronger, but source Actions still need SHA pinning |
 
 ### SSH bootstrap
 
@@ -215,17 +215,20 @@ volume encryption; they solve different threats.
 
 HCCM and CSI require a Hetzner project token. The local provider correctly
 stores it as an Effect `Redacted` value in Alchemy state and as Kubernetes
-Secrets at runtime, but Kubernetes Secrets are only base64-encoded unless K3s
-encryption at rest is enabled.
+Secrets at runtime. New clusters enable K3s encryption at rest by default.
+Existing unencrypted clusters, and encrypted clusters moving from `aescbc` to
+`secretbox`, require the explicit snapshot-guarded migration option.
 
 Token updates currently reapply the Secrets without proving that every consumer
 reloads them. Deployment and DaemonSet pod-template annotations should include a
 non-secret token fingerprint so a change causes deterministic rollouts.
 
-The planned ExternalDNS, cert-manager, and OTEL add-ons must first use a
-Redacted-safe first-class `Kubernetes.Secret`; passing nested Redacted values to
-the current generic `Kubernetes.Manifest` risks sending the literal
-`"<redacted>"`, while eagerly unwrapping them can leak them into plans or state.
+The planned ExternalDNS, cert-manager, and OTEL add-ons can use the new
+Redacted-safe `KubernetesAddons.Secret`. It is implemented against Alchemy's
+public cluster-adapter API, unwraps values only at the API request boundary, and
+never reads Secret data back into state. Helm values must reference that Secret
+rather than carry credentials directly. Redacted desired inputs are still
+persisted by Alchemy, so production deployments require encrypted remote state.
 
 ### Supply chain
 
@@ -453,12 +456,14 @@ CI cannot present a partial suite as an unexplained stop.
 1. Authenticate SSH server host keys and remove the host-verification bypass.
 2. Install and validate explicit sshd hardening.
 3. Wait for cloud-init completion before bootstrap.
-4. Enable K3s Secret encryption at rest and prove HA status convergence.
+4. Run the new Secret-encryption and interrupted-migration checks against live
+   single-server and HA clusters.
 5. Complete single, worker, and HA upgrade/protection/cleanup E2E.
 6. Record every failed E2E phase and error in machine and human reports.
 7. Force deterministic HCCM/CSI rollouts when the Hetzner token changes.
 8. Prove single-node and HA S3 snapshot restore.
-9. Require or strongly preflight encrypted production Alchemy state.
+9. Enforce or externally verify encrypted production Alchemy state; Phase 0
+   currently warns on obvious local-state configurations.
 10. Pin or verify bootstrap, manifest, Action, and release artifacts.
 
 ### P1: security and operational hardening
@@ -475,13 +480,15 @@ CI cannot present a partial suite as an unexplained stop.
 
 ### P2: composable platform services
 
-1. Add the Redacted-safe `Kubernetes.Secret` primitive.
-2. Add reusable Helm readiness.
-3. Implement `alchemy-grafana` with an `OtlpOptions`-compatible destination.
-4. Implement the cluster-agnostic OTEL collector gateway.
-5. Implement Cloudflare ExternalDNS with a zone-scoped token.
-6. Implement generic cert-manager and a Cloudflare DNS-01 issuer.
-7. Keep Certificate ownership with each application or ingress.
+Phase 0 completed the Redacted-safe `KubernetesAddons.Secret` primitive and the
+`ReadyHelmChart` composition without modifying Alchemy core. The remaining
+platform-service tasks are:
+
+1. Implement `alchemy-grafana` with an `OtlpOptions`-compatible destination.
+2. Implement the cluster-agnostic OTEL collector gateway.
+3. Implement Cloudflare ExternalDNS with a zone-scoped token.
+4. Implement generic cert-manager and a Cloudflare DNS-01 issuer.
+5. Keep Certificate ownership with each application or ingress.
 
 Detailed checklists and sequencing are in [`TODO.md`](./TODO.md).
 
@@ -524,6 +531,8 @@ Keep higher-level services separate and accept `Kubernetes.ClusterLike`:
 
 Alchemy already supplies the composition primitives needed for this boundary:
 `Kubernetes.ClusterLike`, `Kubernetes.HelmChart`, `Kubernetes.Manifest`, and
-`Telemetry.OtlpOptions`. The missing general primitives are safe Kubernetes
-Secret handling and reusable workload readiness, not a generic plug-in
-framework.
+`Telemetry.OtlpOptions`. `alchemy-kubernetes-addons` adds safe Secret handling
+and reusable workload readiness through Alchemy's public adapter seam. Phase 0
+needs no Alchemy patch; the repository retains only its unrelated, pre-existing
+Hetzner action-poll timeout adjustment. No generic plug-in framework or new OTEL
+abstraction is needed.

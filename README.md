@@ -1,18 +1,21 @@
 # Alchemy K3s extensions
 
-Two experimental Alchemy providers that make self-managed K3s clusters look like
-`AWS.EKS.Cluster` to Alchemy's Kubernetes resources:
+Three experimental Alchemy extensions for self-managed K3s and composable
+Kubernetes services:
 
 - [`alchemy-hetzner-k3s`](packages/hetzner): Hetzner Cloud servers, private
   networking, firewall, public API load balancer, HCCM, CSI, and unattended K3s
   patch updates.
 - [`alchemy-docker-k3s`](packages/docker): a persistent single-node local K3s
   cluster managed through k3d.
+- [`alchemy-kubernetes-addons`](packages/kubernetes-addons): Redacted-safe
+  Kubernetes Secrets and bounded Helm workload readiness, with DNS,
+  certificates, and telemetry add-ons planned on top.
 
-Both return an object with a `connection` attribute and can be passed directly
-to `Kubernetes.Deployment`, `Job`, `Manifest`, or `HelmChart`. These packages
-are alpha software: test recovery and upgrades before using the Hetzner provider
-for important workloads.
+Both cluster providers return an object with a `connection` attribute and can be
+passed directly to `Kubernetes.Deployment`, `Job`, `Manifest`, or `HelmChart`.
+These packages are alpha software: test recovery and upgrades before using the
+Hetzner provider for important workloads.
 
 ## Hetzner cluster
 
@@ -43,6 +46,7 @@ export default Alchemy.Stack(
       Kubernetes.providers(),
       HetznerK3s.providers(),
     ),
+    // Development only. Production must use an encrypted remote state store.
     state: Alchemy.localState(),
   },
   Effect.gen(function* () {
@@ -117,6 +121,42 @@ S3-compatible replication accepts Effect `Redacted` access and secret keys. Use
 an encrypted remote Alchemy state for production: state necessarily holds the
 Alchemy-managed server deploy keys, K3s join token, and any backup credentials.
 
+Kubernetes Secret encryption at rest is enabled on every new control-plane
+server. K3s uses `secretbox` whenever the resolved patch supports it and the
+provider verifies the status and cross-server hashes before returning the
+cluster. The manual `single-x86` and `ha-x86` E2E profiles verify this on one
+and three control planes respectively.
+
+Existing unencrypted clusters, and encrypted clusters that still use `aescbc`,
+require explicit consent because migration takes an etcd snapshot, restarts
+every control plane, and re-encrypts all Secrets:
+
+```ts
+secretsEncryption: {
+  migrateExisting: true;
+}
+```
+
+The installed K3s version must meet the upstream migration gate:
+`v1.33.10+k3s1`, `v1.34.6+k3s1`, `v1.35.3+k3s1`, or newer. The provider saves
+and verifies a non-empty on-demand snapshot before enablement or provider
+migration, records the migration mode and progress in
+`/var/lib/rancher/k3s/server/db/.alchemy-secrets-encryption-migration`, restarts
+control planes sequentially, refuses to rotate while hashes disagree, and
+retains the snapshot after completion.
+
+If a migration is interrupted, stop concurrent deploys and do not remove the
+marker or snapshot. On every control plane, inspect
+`k3s secrets-encrypt status`; do not manually advance a mismatched HA cluster.
+Re-run the same Alchemy deployment: the marker lets it resume before rotation,
+after rotation, or during final restarts. The optional
+`secretsEncryption.failureInjection` checkpoints (`after-snapshot`,
+`after-enable`, `after-control-plane-restarts`, `after-rotate`, and
+`after-final-restarts`) test that recovery path. If status cannot be reconciled,
+leave K3s stopped and restore the retained snapshot using the
+[official K3s snapshot restore procedure](https://docs.k3s.io/cli/etcd-snapshot#restoring-snapshots)
+before making another encryption change.
+
 The generated kubeconfig is written mode `0600` beneath
 `.alchemy/kubeconfigs/hetzner`. It contains contexts for the API load balancer
 and every control-plane server, selects the load balancer, and is refreshed on
@@ -139,6 +179,67 @@ every read so a clean CI runner can reconstruct it.
   API. NodePorts are not opened publicly.
 - Application-created Hetzner load balancers, volumes, and snapshots are not
   swept when the cluster is deleted.
+
+### Kubernetes Secrets and Helm readiness
+
+Install `alchemy-kubernetes-addons` and add `KubernetesAddons.providers()` next
+to `Kubernetes.providers()`. The package uses only Alchemy's public Kubernetes
+adapter API; Phase 0 adds nothing to the Alchemy patch. The repository's
+pre-existing patch only extends Hetzner action polling from 10 to 60 attempts.
+Use the package's write-only `Secret` for credentials and `Kubernetes.Manifest`
+only for public manifest data:
+
+```ts
+import * as KubernetesAddons from "alchemy-kubernetes-addons";
+
+providers: Layer.mergeAll(
+  Kubernetes.providers(),
+  KubernetesAddons.providers(),
+),
+```
+
+```ts
+const credentials =
+  yield *
+  KubernetesAddons.Secret("CloudflareCredentials", {
+    cluster,
+    namespace: "external-dns",
+    name: "cloudflare-api-token",
+    stringData: { "api-token": token.value },
+  });
+```
+
+Literal values become Effect `Redacted` immediately. Lazy Effect values resolve
+directly to `Redacted`, while Config and Output values are mapped to `Redacted`
+before provider diffing and state persistence. Values are unwrapped only in the
+Kubernetes PATCH body. Reads return only connection, identity, type, UID, and
+resource version—never Secret data. Alchemy still persists the Redacted input so
+updates can be detected; Redacted hides values from plans and logs but is not
+storage encryption. Hetzner, K3s, SSH, backup, Cloudflare, and Grafana
+credentials are therefore necessarily state inputs as those features are
+composed. Production must use an encrypted remote state backend. A
+production-like stage using `local` or `inmemory` state emits a preflight
+warning. This repository does not add its own state cryptography.
+
+Never put a credential directly in Helm values; create a Secret first and pass
+only the chart's Secret name/key reference. `ReadyHelmChart` delegates ownership
+to Alchemy's existing `Kubernetes.HelmChart`, then waits for CRDs, Deployments,
+DaemonSets, StatefulSets, and Jobs with a bounded deadline:
+
+```ts
+yield *
+  KubernetesAddons.ReadyHelmChart("Controller", {
+    cluster,
+    chart: "controller",
+    repo: "https://charts.example.com",
+    version: "1.2.3",
+    timeoutSeconds: 300,
+    values: { existingSecret: credentials.name },
+  });
+```
+
+Timeout and terminal-failure errors identify the object and sanitized conditions
+without including manifests, Secret bodies, or environment values.
 
 The topology and defaults are informed by
 [`vitobotta/hetzner-k3s`](https://github.com/vitobotta/hetzner-k3s): private

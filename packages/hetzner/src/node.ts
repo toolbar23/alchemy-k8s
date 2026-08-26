@@ -7,6 +7,12 @@ import * as Semaphore from "effect/Semaphore";
 import { assertSameMinor } from "../../shared/src/definition.ts";
 import { resolveChannelVersion } from "../../shared/src/channel.ts";
 import {
+  inspectSecretsEncryption,
+  prepareExistingClusterEncryption,
+  secretsEncryptionArguments,
+  supportsSecretbox,
+} from "./secrets-encryption.ts";
+import {
   k3sVersion,
   remotePrivateIp,
   ssh,
@@ -49,6 +55,7 @@ const installArguments = (
   props: NodeProps,
   privateIp: string,
   token: string | undefined,
+  desiredVersion: string,
 ): string[] => {
   const args = [
     props.role === "server" ? "server" : "agent",
@@ -105,7 +112,11 @@ const installArguments = (
     }
   }
   if (props.role === "server") {
-    args.push("--tls-san", props.apiEndpoint);
+    args.push(
+      ...secretsEncryptionArguments(desiredVersion),
+      "--tls-san",
+      props.apiEndpoint,
+    );
     if (props.server.ipv4 !== undefined) {
       args.push("--tls-san", props.server.ipv4);
     }
@@ -161,7 +172,7 @@ export const buildInstallScript = (
   const environment = Object.entries(values)
     .map(([name, value]) => `${name}=${shellQuote(value)}`)
     .join(" ");
-  const args = installArguments(props, privateIp, token)
+  const args = installArguments(props, privateIp, token, desiredVersion)
     .map(shellQuote)
     .join(" ");
   return `set -euo pipefail
@@ -314,6 +325,19 @@ export const NodeProvider = () => {
           ) {
             assertSameMinor(installedVersion, desiredVersion);
           }
+          if (
+            news.initialServer &&
+            installedVersion !== undefined &&
+            news.secretsEncryption !== undefined
+          ) {
+            await prepareExistingClusterEncryption(
+              news.server,
+              installedVersion,
+              desiredVersion,
+              news.secretsEncryption.migrateExisting,
+              news.secretsEncryption.failureInjection,
+            );
+          }
           await sshScript(
             news.server,
             buildInstallScript(effectiveNews, privateIp, desiredVersion),
@@ -324,6 +348,28 @@ export const NodeProvider = () => {
             : news.bootstrap!.server;
           await ssh(admin, providerIdPatchCommand(desiredName, news.server.id));
           await waitForNode(admin, desiredName);
+          if (news.role === "server") {
+            const encryption = await inspectSecretsEncryption(news.server);
+            const migrationPending =
+              news.secretsEncryption?.migrateExisting === true &&
+              ((!encryption.enabled && encryption.stage === "start") ||
+                (encryption.enabled && encryption.provider === "aescbc"));
+            if (!encryption.enabled && !migrationPending) {
+              throw new Error(
+                `K3s Secret encryption is not enabled on ${desiredName}`,
+              );
+            }
+            if (
+              encryption.enabled &&
+              !migrationPending &&
+              supportsSecretbox(desiredVersion) &&
+              encryption.provider !== "secretbox"
+            ) {
+              throw new Error(
+                `K3s Secret encryption on ${desiredName} is not using secretbox`,
+              );
+            }
+          }
           if (replacingServer && output !== undefined) {
             await drainNode(admin, output.name);
           }

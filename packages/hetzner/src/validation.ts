@@ -118,6 +118,21 @@ export const validateClusterProps = (props: ClusterProps): void => {
   ) {
     throw new Error("etcdSnapshots.retention must be a positive integer");
   }
+  const failureInjection = props.secretsEncryption?.failureInjection;
+  if (
+    failureInjection !== undefined &&
+    ![
+      "after-snapshot",
+      "after-enable",
+      "after-control-plane-restarts",
+      "after-rotate",
+      "after-final-restarts",
+    ].includes(failureInjection)
+  ) {
+    throw new Error(
+      `Unknown secretsEncryption.failureInjection: ${String(failureInjection)}`,
+    );
+  }
 };
 
 export const validateCurrentRunnerIp = async (

@@ -5,4 +5,5 @@ Production-oriented Hetzner K3s clusters that implement Alchemy's
 
 See the
 [repository documentation](https://github.com/toolbar23/alchemy-k3s#hetzner-cluster)
-for configuration, upgrade, recovery, and deletion details.
+for configuration, Secret encryption migration and recovery, encrypted state
+requirements, Kubernetes Secret handling, upgrades, and deletion details.

@@ -451,6 +451,94 @@ const listNodes = async (context, logName) => {
   return JSON.parse(result.stdout).items;
 };
 
+const checkSecretsEncryption = async (context, nodes, logName) => {
+  const controlPlanes = nodes.filter(
+    (node) =>
+      node.metadata.labels?.["node-role.kubernetes.io/control-plane"] !==
+        undefined ||
+      node.metadata.labels?.["node-role.kubernetes.io/master"] !== undefined,
+  );
+  const statuses = [];
+  for (const node of controlPlanes) {
+    const name = `encryption-${node.metadata.name}`
+      .slice(0, 63)
+      .replace(/-+$/, "");
+    try {
+      await applyYaml(
+        context,
+        `apiVersion: v1
+kind: Pod
+metadata:
+  name: ${name}
+  namespace: kube-system
+spec:
+  nodeName: ${node.metadata.name}
+  hostNetwork: true
+  restartPolicy: Never
+  containers:
+    - name: status
+      image: alpine:3.22
+      command: ["chroot", "/host", "/usr/local/bin/k3s", "secrets-encrypt", "status"]
+      securityContext:
+        privileged: true
+      volumeMounts:
+        - name: host
+          mountPath: /host
+          readOnly: true
+  volumes:
+    - name: host
+      hostPath:
+        path: /
+        type: Directory
+`,
+        logName,
+      );
+      await kubectl(
+        context,
+        [
+          "wait",
+          `pod/${name}`,
+          "--namespace",
+          "kube-system",
+          "--for=jsonpath={.status.phase}=Succeeded",
+          "--timeout=3m",
+        ],
+        { quiet: true, logName, timeoutMs: 4 * 60_000 },
+      );
+      const logs = await kubectl(
+        context,
+        ["logs", name, "--namespace", "kube-system"],
+        { quiet: true, logName },
+      );
+      if (
+        !/Encryption Status:\s*Enabled/i.test(logs.stdout) ||
+        !/Server Encryption Hashes:\s*All hashes match/i.test(logs.stdout) ||
+        !/^\s*\*\s+secretbox\b/im.test(logs.stdout)
+      ) {
+        throw new Error(
+          `K3s Secret encryption verification failed on ${node.metadata.name}`,
+        );
+      }
+      statuses.push({ node: node.metadata.name, provider: "secretbox" });
+    } finally {
+      await kubectl(
+        context,
+        [
+          "delete",
+          "pod",
+          name,
+          "--namespace",
+          "kube-system",
+          "--ignore-not-found",
+          "--wait=true",
+        ],
+        { allowFailure: true, quiet: true, logName },
+      );
+    }
+  }
+  return statuses;
+};
+
 const runNetworkWorkload = async (context, namespace, logName) => {
   const nodes = await listNodes(context, logName);
   const schedulable = nodes.filter(
@@ -632,12 +720,18 @@ const runSystemChecks = async (context, desired, logName) => {
     { timeoutMs: 5 * 60_000, intervalMs: 10_000 },
   );
   const traefikAddress = await waitForTraefikAddress(context, logName);
+  const secretsEncryption = await checkSecretsEncryption(
+    context,
+    nodes,
+    logName,
+  );
   return {
     inventory,
     nodeNames: nodes.map((node) => node.metadata.name).sort(),
     versions: nodes.map((node) => node.status.nodeInfo.kubeletVersion).sort(),
     workers: workers.length,
     traefikAddress,
+    secretsEncryption,
   };
 };
 

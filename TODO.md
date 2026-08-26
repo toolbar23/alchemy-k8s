@@ -103,39 +103,41 @@ already accepts endpoint Inputs and Redacted header Inputs.
 These tasks must be complete before Cloudflare or Grafana credentials are put
 into Kubernetes.
 
-### 0.1 First-class `Kubernetes.Secret`
+### 0.1 First-class `KubernetesAddons.Secret`
 
-- [ ] Add a first-class `Kubernetes.Secret` resource to Alchemy.
-- [ ] Carry the change temporarily in the existing Alchemy patch only if no
-      upstream release is available.
-- [ ] Accept `Input<string | Redacted<string>>` for every `stringData` value.
-- [ ] Support explicit `name`, `namespace`, Kubernetes Secret `type`, and
+- [x] Add a first-class `KubernetesAddons.Secret` resource using Alchemy's
+      public Kubernetes adapter API.
+- [x] Keep the implementation out of Alchemy core and avoid internal Alchemy
+      imports.
+- [x] Accept `Input<string | Redacted<string>>` for every `stringData` value.
+- [x] Support explicit `name`, `namespace`, Kubernetes Secret `type`, and
       immutable Secrets.
-- [ ] Resolve and unwrap Redacted values only at the Kubernetes request
+- [x] Resolve and unwrap Redacted values only at the Kubernetes request
       boundary.
-- [ ] Exclude plaintext Secret data from resource attributes, plans, notes,
+- [x] Exclude plaintext Secret data from resource attributes, plans, notes,
       errors, and diffs.
-- [ ] Do not read Kubernetes Secret contents back into Alchemy state.
-- [ ] Return only connection, name, namespace, type, UID, and resource version
+- [x] Do not read Kubernetes Secret contents back into Alchemy state.
+- [x] Return only connection, name, namespace, type, UID, and resource version
       as attributes.
-- [ ] Update the Kubernetes Secret when a Redacted input changes.
-- [ ] Delete only the exact Secret owned by the resource.
-- [ ] Document that `Kubernetes.Manifest` is for public manifest data and
-      `Kubernetes.Secret` is for credentials.
-- [ ] Document that `Kubernetes.HelmChart.values` must contain Secret references
+- [x] Update the Kubernetes Secret when a Redacted input changes.
+- [x] Delete only the exact Secret owned by the resource.
+- [x] Document that `Kubernetes.Manifest` is for public manifest data and
+      `KubernetesAddons.Secret` is for credentials.
+- [x] Document that `Kubernetes.HelmChart.values` must contain Secret references
       rather than plaintext credentials.
-- [ ] Add a canary test proving the secret is absent from plan output,
-      attributes, serialized state, errors, snapshots, and logs.
-- [ ] Add a request-boundary test proving Kubernetes receives the original value
+- [x] Add a canary test proving the secret is absent from plan-visible props,
+      attributes, reads, errors, and notes. The Redacted desired input remains
+      in state by design and is protected by the encrypted-state requirement.
+- [x] Add a request-boundary test proving Kubernetes receives the original value
       rather than `"<redacted>"`.
-- [ ] Add create, update, read, idempotence, and delete tests.
+- [x] Add create, update, read, idempotence, and delete tests.
 
 Target API:
 
 ```ts
 const secret =
   yield *
-  Kubernetes.Secret("CloudflareCredentials", {
+  KubernetesAddons.Secret("CloudflareCredentials", {
     cluster,
     namespace: "external-dns",
     name: "cloudflare-api-token",
@@ -147,81 +149,84 @@ const secret =
 
 ### 0.2 Helm readiness
 
-- [ ] Add `wait` and `timeoutSeconds` options to `Kubernetes.HelmChart`.
-- [ ] Wait for `CustomResourceDefinition` objects to report `Established=True`.
-- [ ] Wait for Deployments to observe their generation and make the desired
+- [x] Add `KubernetesAddons.ReadyHelmChart` as a thin composition over
+      `Kubernetes.HelmChart` with a bounded `timeoutSeconds` option.
+- [x] Wait for `CustomResourceDefinition` objects to report `Established=True`.
+- [x] Wait for Deployments to observe their generation and make the desired
       replicas available.
-- [ ] Wait for DaemonSets to make their desired pods available.
-- [ ] Wait for StatefulSets to make their desired replicas ready.
-- [ ] Wait for Jobs to complete or definitively fail.
-- [ ] Report the exact failing object and relevant conditions on timeout.
-- [ ] Ensure readiness errors never include Secret bodies or environment values.
-- [ ] Add success, terminal failure, and timeout tests.
-- [ ] Use readiness waits for ExternalDNS, cert-manager, and the OTEL collector.
+- [x] Wait for DaemonSets to make their desired pods available.
+- [x] Wait for StatefulSets to make their desired replicas ready.
+- [x] Wait for Jobs to complete or definitively fail.
+- [x] Report the exact failing object and relevant conditions on timeout.
+- [x] Ensure readiness errors never include Secret bodies or environment values.
+- [x] Add success, terminal failure, and timeout tests.
+- [x] Require the future ExternalDNS, cert-manager, and OTEL collector add-ons
+      to opt into this readiness wait when they are implemented in later phases.
 
 Target API:
 
 ```ts
 yield *
-  Kubernetes.HelmChart("CertManager", {
+  KubernetesAddons.ReadyHelmChart("CertManager", {
     // ...
-    wait: true,
     timeoutSeconds: 300,
   });
 ```
 
 ### 0.3 K3s Secret encryption at rest
 
-- [ ] Enable K3s Secret encryption by default for new Hetzner clusters.
-- [ ] Prefer the K3s `secretbox` provider when the selected version supports it.
-- [ ] Configure every control-plane server consistently.
-- [ ] Verify `k3s secrets-encrypt status` after bootstrap.
-- [ ] Fail safely when HA servers report mismatched encryption hashes.
-- [ ] Add single-control-plane E2E coverage.
-- [ ] Add three-control-plane E2E coverage.
+- [x] Enable K3s Secret encryption by default for new Hetzner clusters.
+- [x] Prefer the K3s `secretbox` provider when the selected version supports it.
+- [x] Configure every control-plane server consistently.
+- [x] Verify `k3s secrets-encrypt status` after bootstrap.
+- [x] Fail safely when HA servers report mismatched encryption hashes.
+- [x] Add single-control-plane E2E coverage.
+- [x] Add three-control-plane E2E coverage.
 
 Existing-cluster migration:
 
-- [ ] Take and verify an etcd snapshot before migration.
-- [ ] Detect the current K3s version and encryption status.
-- [ ] Refuse migration on K3s versions below the supported version gate.
-- [ ] Run enablement from the initial control-plane server.
-- [ ] Add the encryption flag and restart control planes sequentially.
-- [ ] Verify encryption hashes match before advancing.
-- [ ] Rotate and re-encrypt existing Secrets.
-- [ ] Verify the final state is `reencrypt_finished`.
-- [ ] Retain the pre-migration snapshot until the operator verifies the cluster.
-- [ ] Add failure injection at each migration stage.
-- [ ] Document the recovery procedure for an interrupted migration.
+- [x] Take and verify an etcd snapshot before migration.
+- [x] Detect the current K3s version and encryption status.
+- [x] Refuse migration on K3s versions below the supported version gate.
+- [x] Run enablement from the initial control-plane server.
+- [x] Migrate existing `aescbc` clusters to `secretbox` only through the same
+      explicit, snapshot-guarded rotation path.
+- [x] Add the encryption flag and restart control planes sequentially.
+- [x] Verify encryption hashes match before advancing.
+- [x] Rotate and re-encrypt existing Secrets.
+- [x] Verify the final state is `reencrypt_finished`.
+- [x] Retain the pre-migration snapshot until the operator verifies the cluster.
+- [x] Add failure injection at each migration stage.
+- [x] Document the recovery procedure for an interrupted migration.
 
 Reference: [K3s secrets encryption](https://docs.k3s.io/cli/secrets-encrypt).
 
 ### 0.4 Alchemy state protection
 
-- [ ] Document encrypted remote Alchemy state as a production requirement.
-- [ ] Add a production preflight warning when a stack uses an obviously local or
+- [x] Document encrypted remote Alchemy state as a production requirement.
+- [x] Add a production preflight warning when a stack uses an obviously local or
       unencrypted state configuration.
-- [ ] Document that Cloudflare, Grafana, K3s, SSH, and backup credentials are
+- [x] Document that Cloudflare, Grafana, K3s, SSH, and backup credentials are
       necessarily persisted as Redacted state inputs.
-- [ ] Do not implement custom state encryption in this repository.
+- [x] Do not implement custom state encryption in this repository.
 
 ## Phase 1: package structure
 
 ### 1.1 `alchemy-kubernetes-addons`
 
-- [ ] Add `packages/kubernetes-addons` to the root workspaces.
+- [x] Add `packages/kubernetes-addons` to the root workspaces.
 - [ ] Publish it as `alchemy-kubernetes-addons`.
-- [ ] Add peer dependencies on compatible `alchemy` and `effect` versions.
-- [ ] Keep it independent of `alchemy-hetzner-k3s` and `alchemy-docker-k3s`.
+- [x] Add peer dependencies on compatible `alchemy` and `effect` versions.
+- [x] Keep it independent of `alchemy-hetzner-k3s` and `alchemy-docker-k3s`.
 - [ ] Export `OtelCollector`.
 - [ ] Export `CloudflareExternalDns`.
 - [ ] Export `CertManager`.
 - [ ] Export `CloudflareAcmeIssuer`.
 - [ ] Implement the add-ons as thin Effect components over existing Alchemy
       resources.
-- [ ] Avoid a custom provider collection unless an add-on owns a remote resource
-      that existing providers cannot represent.
-- [ ] Add build, type-check, test, and package-content checks.
+- [x] Limit its provider collection to resources Alchemy does not already
+      represent: safe Secret ownership and dependent readiness gates.
+- [x] Add build, type-check, test, and package-content checks.
 
 ### 1.2 `alchemy-grafana`
 
@@ -330,13 +335,13 @@ References:
 - [ ] Add OTLP/gRPC on port 4317 only when a real consumer requires it.
 - [ ] Build only the traces, logs, and metrics pipelines present in the
       destination.
-- [ ] Store exporter credentials in `Kubernetes.Secret`.
+- [ ] Store exporter credentials in `KubernetesAddons.Secret`.
 - [ ] Reference credentials through collector environment variables rather than
       embedding them in Helm values.
 - [ ] Force a rollout with a non-secret credential checksum when credentials
       rotate.
 - [ ] Expose only a ClusterIP Service.
-- [ ] Enable Helm readiness.
+- [ ] Install through `KubernetesAddons.ReadyHelmChart`.
 - [ ] Expose Axiom-compatible internal OTLP endpoint outputs.
 - [ ] Type-test both Hetzner and Docker K3s clusters as inputs.
 - [ ] Test that rendered chart inputs contain no plaintext credential.
@@ -395,7 +400,7 @@ interface CloudflareExternalDnsProps {
 - [ ] Scope the token to `com.cloudflare.api.account.zone.<zoneId>`.
 - [ ] Never grant an all-zone wildcard.
 - [ ] Create an `external-dns` namespace.
-- [ ] Store the token in `Kubernetes.Secret`.
+- [ ] Store the token in `KubernetesAddons.Secret`.
 - [ ] Put only the Secret name and key into Helm values.
 - [ ] Add a non-secret token fingerprint annotation to the Deployment.
 - [ ] Roll and wait for ExternalDNS when the token changes.
@@ -414,7 +419,7 @@ interface CloudflareExternalDnsProps {
 - [ ] Use the TXT registry.
 - [ ] Apply the requested policy and proxy behavior.
 - [ ] Configure a high Cloudflare DNS-record page size.
-- [ ] Enable Helm readiness.
+- [ ] Install through `KubernetesAddons.ReadyHelmChart`.
 - [ ] Return zone, namespace, release name, and TXT owner ID as outputs.
 
 Reference:
@@ -679,10 +684,10 @@ yield *
 
 ## Execution order
 
-- [ ] 1. Add Alchemy `Kubernetes.Secret`.
-- [ ] 2. Add Alchemy Helm readiness.
-- [ ] 3. Enable K3s Secret encryption for new clusters.
-- [ ] 4. Scaffold `alchemy-kubernetes-addons`.
+- [x] 1. Add `KubernetesAddons.Secret` without patching Alchemy core.
+- [x] 2. Add composable Helm readiness without patching Alchemy core.
+- [x] 3. Enable K3s Secret encryption for new clusters.
+- [x] 4. Scaffold `alchemy-kubernetes-addons`.
 - [ ] 5. Scaffold `alchemy-grafana` credentials and resources.
 - [ ] 6. Implement the Grafana OTLP destination.
 - [ ] 7. Implement the OTEL collector gateway.
@@ -692,7 +697,7 @@ yield *
 - [ ] 11. Add local integration tests.
 - [ ] 12. Run live Cloudflare, Grafana, and Let's Encrypt staging E2E.
 - [ ] 13. Add documentation and examples.
-- [ ] 14. Add existing-cluster Secret-encryption migration.
+- [x] 14. Add existing-cluster Secret-encryption migration.
 - [ ] 15. Complete the remaining P0 cluster security work.
 
 Each unit should be implemented in a focused JJ revision with its own tests,

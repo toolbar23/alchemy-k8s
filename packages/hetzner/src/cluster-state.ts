@@ -16,6 +16,10 @@ import {
   systemUpgradePlans,
 } from "./manifests.ts";
 import { k3sVersion, ssh, sshScript } from "./remote.ts";
+import {
+  ensureSecretsEncryption,
+  inspectClusterEncryption,
+} from "./secrets-encryption.ts";
 import type {
   ClusterAttributes,
   ClusterResource,
@@ -203,6 +207,7 @@ const observe = async (
     currentVersions: await inspectVersions(props),
     channel: props.k3s.channel,
     topologyFingerprint: props.topologyFingerprint,
+    secretsEncryption: await inspectClusterEncryption(props.controlPlanes),
   };
 };
 
@@ -235,6 +240,10 @@ export const ClusterProvider = () =>
     reconcile: ({ fqn, news }) =>
       Effect.tryPromise({
         try: async () => {
+          await ensureSecretsEncryption(
+            news.controlPlanes,
+            news.secretsEncryption.failureInjection,
+          );
           await sshScript(
             admin(news).server,
             buildAddonScript(news),

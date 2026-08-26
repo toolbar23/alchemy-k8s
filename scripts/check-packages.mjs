@@ -1,7 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
-const packages = ["packages/hetzner", "packages/docker"];
+const packages = [
+  "packages/hetzner",
+  "packages/docker",
+  "packages/kubernetes-addons",
+];
 const versions = new Set();
 
 for (const directory of packages) {
@@ -41,4 +45,4 @@ for (const directory of packages) {
 }
 
 if (versions.size !== 1)
-  throw new Error("Both public packages must use the same release version");
+  throw new Error("Public packages must use the same release version");

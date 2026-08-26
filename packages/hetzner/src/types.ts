@@ -66,7 +66,24 @@ export interface ClusterProps {
     retention?: number;
     s3?: EtcdS3Backup;
   };
+  secretsEncryption?: {
+    /**
+     * Required once to encrypt an existing cluster or migrate its provider
+     * from aescbc to secretbox. New clusters use encryption without this flag.
+     * @default false
+     */
+    migrateExisting?: boolean;
+    /** Controlled recovery testing; the next deploy resumes after removal. */
+    failureInjection?: SecretsEncryptionFailurePoint;
+  };
 }
+
+export type SecretsEncryptionFailurePoint =
+  | "after-snapshot"
+  | "after-enable"
+  | "after-control-plane-restarts"
+  | "after-rotate"
+  | "after-final-restarts";
 
 export interface ServerReference {
   id: number;
@@ -106,6 +123,10 @@ export interface NodeProps {
     retention: number;
     s3?: EtcdS3Backup;
   };
+  secretsEncryption?: {
+    migrateExisting: boolean;
+    failureInjection?: SecretsEncryptionFailurePoint;
+  };
 }
 
 export type NodeResource = Resource<
@@ -129,6 +150,9 @@ export interface ClusterStateProps {
   networkZone: string;
   protectAgainstDeletion: boolean;
   topologyFingerprint: string;
+  secretsEncryption: {
+    failureInjection?: SecretsEncryptionFailurePoint;
+  };
 }
 
 export interface ClusterAttributes {
@@ -138,6 +162,12 @@ export interface ClusterAttributes {
   currentVersions: ClusterVersion[];
   channel: `v1.${number}`;
   topologyFingerprint: string;
+  secretsEncryption: {
+    enabled: boolean;
+    provider: "secretbox" | "aescbc" | undefined;
+    stage: string | undefined;
+    hashesMatch: boolean;
+  };
 }
 
 export type ClusterResource = Resource<

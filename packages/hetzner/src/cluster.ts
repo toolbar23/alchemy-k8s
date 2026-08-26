@@ -1,5 +1,7 @@
 import * as Hetzner from "alchemy/Hetzner";
 import * as Output from "alchemy/Output";
+import { Stage } from "alchemy";
+import { State } from "alchemy/State";
 import * as Effect from "effect/Effect";
 import {
   ipv4CidrRange,
@@ -25,8 +27,26 @@ const dnsName = (value: string): string => {
   return normalized.slice(0, 63).replace(/-$/g, "");
 };
 
+export const productionStateWarning = (
+  stage: string,
+  stateId: string,
+  nodeEnvironment = process.env.NODE_ENV,
+): string | undefined => {
+  const production =
+    nodeEnvironment === "production" ||
+    /(^|[-_])(prod|production)([-_]|$)/i.test(stage);
+  if (!production || (stateId !== "local" && stateId !== "inmemory")) {
+    return undefined;
+  }
+  return `Production stage ${JSON.stringify(stage)} uses Alchemy state ${JSON.stringify(stateId)}. Redacted Hetzner, K3s, SSH, backup, and add-on credentials require an encrypted remote state backend.`;
+};
+
 export const Cluster = (id: string, props: ClusterProps) =>
   Effect.gen(function* () {
+    const stage = yield* Stage;
+    const state = yield* yield* State;
+    const stateWarning = productionStateWarning(stage, state.id);
+    if (stateWarning !== undefined) console.warn(stateWarning);
     validateClusterProps(props);
     const k3s = normalizeK3sDefinition(props.k3s);
     const locations = normalizeLocations(props);
@@ -167,6 +187,14 @@ export const Cluster = (id: string, props: ClusterProps) =>
         ? {}
         : { s3: props.etcdSnapshots.s3 }),
     };
+    const secretsEncryption = {
+      migrateExisting: props.secretsEncryption?.migrateExisting ?? false,
+      ...(props.secretsEncryption?.failureInjection === undefined
+        ? {}
+        : {
+            failureInjection: props.secretsEncryption.failureInjection,
+          }),
+    };
     const controlPlanes: NodeResource[] = [];
     for (const [index, server] of controlPlaneServers.entries()) {
       const initial = index === 0;
@@ -174,7 +202,7 @@ export const Cluster = (id: string, props: ClusterProps) =>
         name: dnsName(`${id}-cp-${index + 1}`),
         role: "server",
         initialServer: initial,
-        bootstrapRevision: 2,
+        bootstrapRevision: 3,
         server,
         ...(initial ? {} : { bootstrap: controlPlanes[0]! }),
         k3s,
@@ -183,6 +211,7 @@ export const Cluster = (id: string, props: ClusterProps) =>
         scheduleWorkloadsOnControlPlane:
           props.scheduleWorkloadsOnControlPlane ?? false,
         etcdSnapshots,
+        secretsEncryption,
       });
       controlPlanes.push(node);
     }
@@ -232,5 +261,10 @@ export const Cluster = (id: string, props: ClusterProps) =>
       networkZone,
       protectAgainstDeletion: props.protectAgainstDeletion ?? true,
       topologyFingerprint,
+      secretsEncryption: {
+        ...(secretsEncryption.failureInjection === undefined
+          ? {}
+          : { failureInjection: secretsEncryption.failureInjection }),
+      },
     });
   });

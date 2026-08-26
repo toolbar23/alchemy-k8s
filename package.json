@@ -17,7 +17,8 @@
   },
   "workspaces": [
     "packages/hetzner",
-    "packages/docker"
+    "packages/docker",
+    "packages/kubernetes-addons"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",

@@ -19,6 +19,14 @@ import {
 } from "../src/node.ts";
 import * as Effect from "effect/Effect";
 import type { ClusterStateProps, NodeProps } from "../src/types.ts";
+import { productionStateWarning } from "../src/cluster.ts";
+import {
+  buildPrepareSecretsEncryptionScript,
+  parseSecretsEncryptionStatus,
+  secretsEncryptionArguments,
+  supportsExistingClusterMigration,
+  supportsSecretbox,
+} from "../src/secrets-encryption.ts";
 
 const definition = normalizeK3sDefinition({
   channel: "v1.35",
@@ -113,7 +121,71 @@ describe("Hetzner bootstrap", () => {
     expect(script).toContain(`'--flannel-iface' "$private_interface"`);
     expect(script).toContain("'--kubelet-arg' 'provider-id=hcloud://1'");
     expect(script).toContain("'--etcd-s3-bucket-lookup-type' 'path'");
+    expect(script).toContain("'--secrets-encryption'");
+    expect(script).toContain("'--secrets-encryption-provider' 'secretbox'");
     expect(script).toContain("secret");
+  });
+
+  it("uses version-gated Secret encryption and parses K3s status safely", () => {
+    expect(supportsSecretbox("v1.30.11+k3s1")).toBe(false);
+    expect(supportsSecretbox("v1.30.12+k3s1")).toBe(true);
+    expect(supportsSecretbox("v1.31.8+k3s1")).toBe(true);
+    expect(supportsSecretbox("v1.32.4+k3s1")).toBe(true);
+    expect(supportsSecretbox("v1.33.0+k3s1")).toBe(true);
+    expect(secretsEncryptionArguments("v1.29.9+k3s1")).toEqual([
+      "--secrets-encryption",
+    ]);
+    expect(supportsExistingClusterMigration("v1.35.2+k3s1")).toBe(false);
+    expect(supportsExistingClusterMigration("v1.35.3+k3s1")).toBe(true);
+    expect(supportsExistingClusterMigration("v1.36.0+k3s1")).toBe(true);
+
+    expect(
+      parseSecretsEncryptionStatus(`Encryption Status: Enabled
+Current Rotation Stage: reencrypt_finished
+Server Encryption Hashes: All hashes match
+Active  Key Type  Name
+------  --------  ----
+ *      Secretbox secretboxkey
+`),
+    ).toEqual({
+      enabled: true,
+      noConfiguration: false,
+      stage: "reencrypt_finished",
+      hashesMatch: true,
+      provider: "secretbox",
+    });
+  });
+
+  it("builds a verified, resumable pre-migration snapshot checkpoint", () => {
+    const script = buildPrepareSecretsEncryptionScript("after-snapshot");
+    expect(script).toContain("k3s etcd-snapshot save --name");
+    expect(script).toContain("k3s etcd-snapshot ls | grep -F");
+    expect(script).toContain("-size +0c");
+    expect(script).toContain("phase=snapshot_verified");
+    expect(script).toContain("exit 97");
+    const enabled = buildPrepareSecretsEncryptionScript("after-enable");
+    expect(enabled).toContain("k3s secrets-encrypt enable");
+    expect(enabled).toContain("phase=prepared");
+    expect(enabled).toContain('"enable"');
+    expect(enabled).toContain("exit 97");
+    const provider = buildPrepareSecretsEncryptionScript(undefined, "provider");
+    expect(provider).toContain('"provider"');
+    expect(provider).toContain('[ "$recorded_mode" = enable ]');
+  });
+
+  it("warns production stages that use plaintext local Alchemy state", () => {
+    expect(productionStateWarning("production", "local", "test")).toContain(
+      "encrypted remote state backend",
+    );
+    expect(productionStateWarning("prod-eu", "inmemory", "test")).toContain(
+      "Redacted",
+    );
+    expect(productionStateWarning("dev", "local", "development")).toBe(
+      undefined,
+    );
+    expect(
+      productionStateWarning("production", "cloudflare-http", "test"),
+    ).toBe(undefined);
   });
 
   it("gives replacement generations different Kubernetes node names", () => {
