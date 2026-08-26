@@ -3,6 +3,9 @@
     "target": "ES2024",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+    "paths": {
+      "alchemy-s3-access": ["./packages/s3-access/src/index.ts"]
+    },
     "allowImportingTsExtensions": true,
     "lib": ["ES2024", "DOM"],
     "strict": true,

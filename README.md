@@ -519,19 +519,20 @@ workflow uses npm trusted publishing/OIDC and provenance, with no npm token in
 GitHub.
 
 npm trusted publishers can only be configured for packages that already exist.
-Bootstrap both package names interactively from a trusted workstation using npm
-2FA:
+Bootstrap every unpublished workspace interactively from a trusted workstation
+using npm 2FA:
 
 ```sh
-npm ci
-npm run check
-npm publish ./packages/hetzner --access public --tag next --provenance=false
-npm publish ./packages/docker --access public --tag next --provenance=false
+mise run publish:dry-run
+mise run publish
 ```
 
-The interactive commands prompt for 2FA. Provenance is disabled only for this
-one-time local bootstrap because npm provenance requires a supported CI
-environment.
+The task verifies the npm login, installs from the lockfile, runs the complete
+check suite, and publishes every public workspace that does not exist on npm.
+Already-published versions are skipped. If a package already exists but the
+workspace contains a new version, the task stops and directs that release to
+GitHub OIDC instead. Provenance is disabled only for a package's one-time local
+bootstrap because npm provenance requires a supported CI environment.
 
 Prerelease versions are published under npm's `next` tag; stable versions use
 `latest`.
@@ -552,4 +553,4 @@ therefore use a new version such as `0.1.0-alpha.1`, not the already-published
 bootstrap version.
 
 Package names are independently checked for existence before publishing, so a
-workflow retry can finish a partially completed two-package release.
+workflow retry can finish a partially completed multi-package release.

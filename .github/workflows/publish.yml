@@ -26,15 +26,4 @@ jobs:
           version=$(node -p "require('./package.json').version")
           test "${GITHUB_REF_NAME}" = "v${version}"
       - name: Publish synchronized packages
-        run: |
-          version=$(node -p "require('./package.json').version")
-          tag=latest
-          case "${version}" in *-*) tag=next ;; esac
-          for workspace in packages/hetzner packages/docker; do
-            name=$(node -p "require('./${workspace}/package.json').name")
-            if npm view "${name}@${version}" version >/dev/null 2>&1; then
-              echo "${name}@${version} is already published; skipping"
-            else
-              npm publish "./${workspace}" --access public --provenance --tag "${tag}"
-            fi
-          done
+        run: node scripts/publish-packages.mjs --oidc
