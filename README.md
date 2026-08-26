@@ -93,6 +93,10 @@ cluster, then joins the remaining control-plane servers and workers in parallel.
 Reconciliation of existing nodes remains serialized per cluster, so upgrades and
 create-first replacements still roll one node at a time.
 
+Nodes receive a public IPv4 address for direct deployment SSH and internet
+egress, but public IPv6 is disabled. Kubernetes and load-balancer traffic
+between nodes uses the private network.
+
 ### Upgrades and recovery
 
 The minor is pinned in code (`v1.35` in the example). Initial provisioning

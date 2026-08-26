@@ -90,6 +90,8 @@ export const Cluster = (id: string, props: ClusterProps) =>
         Hetzner.Server(`${id}-control-plane-${index + 1}`, {
           serverType: props.controlPlane.serverType,
           image: "ubuntu-24.04",
+          enableIpv4: true,
+          enableIpv6: false,
           location,
           networks: [network],
           firewalls: [firewall],
@@ -109,6 +111,8 @@ export const Cluster = (id: string, props: ClusterProps) =>
           Hetzner.Server(`${id}-${pool.name}-${index + 1}`, {
             serverType: pool.serverType,
             image: "ubuntu-24.04",
+            enableIpv4: true,
+            enableIpv6: false,
             ...(pool.replacementToken === undefined
               ? {}
               : {
