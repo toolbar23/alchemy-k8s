@@ -8,6 +8,19 @@ const packages = [
   "packages/s3-access",
 ];
 const versions = new Set();
+const publishWorkflow = readFileSync(".github/workflows/publish.yml", "utf8");
+
+if (!publishWorkflow.includes("id-token: write"))
+  throw new Error("OIDC publishing requires id-token: write");
+if (
+  publishWorkflow.includes("registry-url:") ||
+  publishWorkflow.includes("NODE_AUTH_TOKEN") ||
+  publishWorkflow.includes("_authToken")
+) {
+  throw new Error(
+    "OIDC publishing must not configure classic npm authentication",
+  );
+}
 
 for (const directory of packages) {
   const manifest = JSON.parse(

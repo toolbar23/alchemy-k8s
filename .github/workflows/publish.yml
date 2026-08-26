@@ -17,7 +17,6 @@ jobs:
         with:
           node-version: 24
           package-manager-cache: false
-          registry-url: https://registry.npmjs.org
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v3.18.6

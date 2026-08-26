@@ -1,7 +1,7 @@
 {
   "name": "alchemy-k3s-workspace",
   "private": true,
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-alpha.3",
   "description": "Alchemy extensions for Hetzner and local k3s clusters",
   "license": "Apache-2.0",
   "type": "module",
