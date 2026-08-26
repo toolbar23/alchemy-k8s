@@ -18,7 +18,9 @@
   "workspaces": [
     "packages/hetzner",
     "packages/docker",
-    "packages/kubernetes-addons"
+    "packages/kubernetes-addons",
+    "packages/s3-access",
+    "packages/grafana"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",

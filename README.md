@@ -1,6 +1,6 @@
 # Alchemy K3s extensions
 
-Three experimental Alchemy extensions for self-managed K3s and composable
+Five experimental Alchemy extensions for self-managed K3s and composable
 Kubernetes services:
 
 - [`alchemy-hetzner-k3s`](packages/hetzner): Hetzner Cloud servers, private
@@ -11,6 +11,10 @@ Kubernetes services:
 - [`alchemy-kubernetes-addons`](packages/kubernetes-addons): Redacted-safe
   Kubernetes Secrets and bounded Helm workload readiness, with DNS,
   certificates, and telemetry add-ons planned on top.
+- [`alchemy-s3-access`](packages/s3-access): the provider-neutral, Redacted
+  credential contract used to pass scoped S3-compatible bucket access.
+- [`alchemy-grafana`](packages/grafana): the Redacted Grafana Cloud deployment
+  credential boundary; API resources and OTLP discovery are the next phase.
 
 Both cluster providers return an object with a `connection` attribute and can be
 passed directly to `Kubernetes.Deployment`, `Job`, `Manifest`, or `HelmChart`.

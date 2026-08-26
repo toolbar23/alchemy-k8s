@@ -214,24 +214,24 @@ Reference: [K3s secrets encryption](https://docs.k3s.io/cli/secrets-encrypt).
 
 ### 1.1 `alchemy-s3-access`
 
-- [ ] Add `packages/s3-access` to the root workspaces.
-- [ ] Publish it as the separate `alchemy-s3-access` npm package.
-- [ ] Export a provider-neutral `S3BucketAccess` contract with `endpoint`,
+- [x] Add `packages/s3-access` to the root workspaces.
+- [x] Make it independently publishable as the `alchemy-s3-access` npm package.
+- [x] Export a provider-neutral `S3BucketAccess` contract with `endpoint`,
       `region`, `bucket`, `accessKeyId`, and Redacted `secretAccessKey` fields.
-- [ ] Support an optional Redacted `sessionToken` for temporary AWS STS and R2
+- [x] Support an optional Redacted `sessionToken` for temporary AWS STS and R2
       credentials.
-- [ ] Support optional `forcePathStyle` for MinIO and other S3-compatible
+- [x] Support optional `forcePathStyle` for MinIO and other S3-compatible
       providers that do not use virtual-host bucket addressing.
-- [ ] Keep bucket prefixes, snapshot retention, and other consumer policy out of
+- [x] Keep bucket prefixes, snapshot retention, and other consumer policy out of
       the access contract.
-- [ ] Keep bucket creation, encryption, versioning, retention, and deletion in
+- [x] Keep bucket creation, encryption, versioning, retention, and deletion in
       provider-specific resources; this package describes access, not ownership
       or lifecycle.
-- [ ] Require provider integrations to issue separately scoped credentials per
+- [x] Require provider integrations to issue separately scoped credentials per
       consumer instead of sharing one account-wide key.
-- [ ] Keep the package independent of AWS, Cloudflare, Fly, Prisma, Hetzner, and
+- [x] Keep the package independent of AWS, Cloudflare, Fly, Prisma, Hetzner, and
       Kubernetes providers.
-- [ ] Add build, type-check, API-shape, Redacted-secret, and package-content
+- [x] Add build, type-check, API-shape, Redacted-secret, and package-content
       checks.
 
 Target API:
@@ -255,29 +255,27 @@ a separate retained stack so cluster destruction cannot delete its backups.
 ### 1.2 `alchemy-kubernetes-addons`
 
 - [x] Add `packages/kubernetes-addons` to the root workspaces.
-- [ ] Publish it as `alchemy-kubernetes-addons`.
+- [x] Make it independently publishable as `alchemy-kubernetes-addons`.
 - [x] Add peer dependencies on compatible `alchemy` and `effect` versions.
 - [x] Keep it independent of `alchemy-hetzner-k3s` and `alchemy-docker-k3s`.
-- [ ] Export `OtelCollector`.
-- [ ] Export `CloudflareExternalDns`.
-- [ ] Export `CertManager`.
-- [ ] Export `CloudflareAcmeIssuer`.
-- [ ] Implement the add-ons as thin Effect components over existing Alchemy
-      resources.
+- [x] Keep `OtelCollector`, `CloudflareExternalDns`, `CertManager`, and
+      `CloudflareAcmeIssuer` out until their implementation phases rather than
+      publishing placeholder exports.
 - [x] Limit its provider collection to resources Alchemy does not already
       represent: safe Secret ownership and dependent readiness gates.
 - [x] Add build, type-check, test, and package-content checks.
 
 ### 1.3 `alchemy-grafana`
 
-- [ ] Add `packages/grafana` to the root workspaces.
-- [ ] Publish it as `alchemy-grafana`.
-- [ ] Add its provider collection and credential provider.
-- [ ] Support existing Grafana Cloud stacks.
-- [ ] Support access policies and access-policy tokens.
-- [ ] Support OTLP connectivity discovery.
-- [ ] Support OTLP destination composition.
-- [ ] Add build, type-check, test, and package-content checks.
+- [x] Add `packages/grafana` to the root workspaces.
+- [x] Make it independently publishable as `alchemy-grafana`.
+- [x] Export a credential provider for `GRAFANA_CLOUD_ACCESS_TOKEN` and
+      `GRAFANA_CLOUD_ORG_SLUG`, keeping the token Redacted.
+- [x] Defer the provider collection until Phase 2 adds the first Grafana
+      resource; an empty collection would be inert scaffolding.
+- [x] Keep stack lookup, access policies, tokens, connectivity discovery, and
+      OTLP composition in Phase 2.
+- [x] Add build, type-check, test, and package-content checks.
 
 Do not initially add stack creation, dashboards, alerts, users, teams, service
 accounts, or self-hosted Loki/Tempo/Mimir.
@@ -286,8 +284,8 @@ accounts, or self-hosted Loki/Tempo/Mimir.
 
 ### 2.1 Authentication
 
-- [ ] Support `GRAFANA_CLOUD_ACCESS_TOKEN`.
-- [ ] Support `GRAFANA_CLOUD_ORG_SLUG`.
+- [x] Support `GRAFANA_CLOUD_ACCESS_TOKEN`.
+- [x] Support `GRAFANA_CLOUD_ORG_SLUG`.
 - [ ] Integrate with Alchemy's normal profile and provider flow.
 - [ ] Validate that the deployment credential can read the selected stack and
       its connectivity information.
@@ -653,6 +651,7 @@ yield *
 - [ ] Run `npm run build`.
 - [ ] Run `npm run pack:check`.
 - [ ] Run `npm audit --omit=dev`.
+- [ ] Publish all public packages from a reviewed tagged release.
 
 ### 7.2 Compatibility matrix
 
@@ -782,13 +781,13 @@ Automatic initial-control-plane recovery (P1):
 - [x] 1. Add `KubernetesAddons.Secret` without patching Alchemy core.
 - [x] 2. Add composable Helm readiness without patching Alchemy core.
 - [x] 3. Enable K3s Secret encryption for new clusters.
-- [ ] 4. Scaffold and publish `alchemy-s3-access`.
+- [x] 4. Scaffold and prepare `alchemy-s3-access` for publication.
 - [ ] 5. Integrate `S3BucketAccess` with K3s snapshots and prove
       single-control-plane restore.
 - [ ] 6. Implement and E2E-test automatic single-control-plane recovery.
 - [ ] 7. Prove HA restore and extend recovery to HA membership reconstruction.
 - [x] 8. Scaffold `alchemy-kubernetes-addons`.
-- [ ] 9. Scaffold `alchemy-grafana` credentials and resources.
+- [x] 9. Scaffold the `alchemy-grafana` credential boundary.
 - [ ] 10. Implement the Grafana OTLP destination.
 - [ ] 11. Implement the OTEL collector gateway.
 - [ ] 12. Implement Cloudflare ExternalDNS.
