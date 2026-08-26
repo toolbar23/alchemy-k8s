@@ -119,7 +119,7 @@ are useful even when the local implementation uses a different architecture.
 | Kubernetes composition     | Implements `Kubernetes.ClusterLike`                                                                                       | Produces kubeconfig for ordinary tooling                                                          | Local advantage inside Alchemy                                    |
 | ExternalDNS                | Planned separate add-on                                                                                                   | Not a core capability                                                                             | Separate add-on by design                                         |
 | cert-manager/Let's Encrypt | Planned separate add-ons                                                                                                  | Not a core capability                                                                             | Separate add-ons by design                                        |
-| OTEL/Parseable             | S3-backed Parseable add-on implemented; collector planned                                                                 | Not a core capability                                                                             | Separate add-on by design                                         |
+| OTEL/Parseable             | S3-backed Parseable and ClusterIP-only OTLP/HTTP collector add-ons implemented                                            | Not a core capability                                                                             | Separate add-ons by design                                        |
 
 ## Security-critical comparison
 
@@ -481,12 +481,13 @@ CI cannot present a partial suite as an unexplained stop.
 ### P2: composable platform services
 
 Phase 0 completed the Redacted-safe `KubernetesAddons.Secret` primitive and the
-`ReadyHelmChart` composition without modifying Alchemy core. The remaining
+`ReadyHelmChart` composition without modifying Alchemy core. Parseable and the
+cluster-agnostic OTLP/HTTP collector gateway are implemented. The remaining
 platform-service tasks are:
 
 1. E2E-test the implemented S3-backed Parseable add-on and its bundled UI.
-2. Implement the cluster-agnostic OTEL collector gateway using Parseable's
-   endpoint options and Kubernetes Secret reference.
+2. E2E-test collector signal routing and credential rotation on Docker and
+   Hetzner K3s.
 3. Implement Cloudflare ExternalDNS with a zone-scoped token.
 4. Implement generic cert-manager and a Cloudflare DNS-01 issuer.
 5. Keep Certificate ownership with each application or ingress.

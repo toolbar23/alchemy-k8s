@@ -23,6 +23,17 @@ import {
 } from "./client.ts";
 
 export {
+  OTEL_COLLECTOR_CHART_VERSION,
+  OTEL_COLLECTOR_IMAGE,
+  OtelCollector,
+  type OtelCollectorBasicAuthSecretRef,
+  type OtelCollectorDestination,
+  type OtelCollectorProps,
+  type OtelCollectorResult,
+  type OtelSignal,
+} from "./otel-collector.ts";
+
+export {
   PARSEABLE_CHART_VERSION,
   PARSEABLE_IMAGE,
   Parseable,
@@ -341,8 +352,9 @@ export const ReadinessProvider = () =>
 
 export interface ReadyHelmChartProps extends Omit<
   Kubernetes.HelmChartProps,
-  "wait" | "timeoutSeconds"
+  "cluster" | "wait" | "timeoutSeconds"
 > {
+  cluster: Input<Kubernetes.ClusterLike>;
   timeoutSeconds?: number;
 }
 

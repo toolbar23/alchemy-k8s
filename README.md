@@ -278,9 +278,35 @@ prefer private access or an authentication proxy.
 The result exposes `otelEndpoint`, `otelTracesEndpoint`, `otelLogsEndpoint`, and
 `otelMetricsEndpoint` for Axiom-shaped composition. Parseable OSS authenticates
 these endpoints with its admin Basic credentials, so applications should send to
-the planned in-cluster OTEL collector. The collector will mount
-`credentialsSecretRef`; do not distribute `parseable.admin.password` to
-workloads.
+the in-cluster OTEL collector; do not distribute `parseable.admin.password` to
+workloads:
+
+```ts
+const collector =
+  yield *
+  KubernetesAddons.OtelCollector("TelemetryGateway", {
+    cluster,
+    destination: {
+      endpoints: parseable.endpoints,
+      authentication: {
+        type: "basic",
+        secretRef: parseable.credentialsSecretRef,
+      },
+    },
+  });
+
+const appTelemetry = {
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: collector.otelTracesEndpoint,
+  OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: collector.otelLogsEndpoint,
+};
+```
+
+The collector exposes only unauthenticated OTLP/HTTP on its ClusterIP Service.
+It injects Parseable's signal headers and Basic credentials at the destination
+boundary. Header values and credentials stay in Kubernetes Secrets; Helm values
+and the collector ConfigMap contain only environment references. OTLP/gRPC,
+Ingress, host log collection, Kubernetes events, and cluster scraping are not
+enabled.
 
 The topology and defaults are informed by
 [`vitobotta/hetzner-k3s`](https://github.com/vitobotta/hetzner-k3s): private

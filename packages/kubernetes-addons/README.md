@@ -94,3 +94,46 @@ with `streams`. `credentialsSecretRef` lets an in-cluster collector mount the
 Parseable Basic credentials without putting them in Helm values. Temporary S3
 session credentials are rejected because the pinned Parseable chart does not
 support them.
+
+## OpenTelemetry collector gateway
+
+`OtelCollector` is a destination adapter for any `Kubernetes.ClusterLike`. It
+accepts the endpoint shape from `Alchemy.Telemetry.OtlpOptions`, adds optional
+Basic authentication from a namespaced Secret, and exposes Axiom-shaped
+in-cluster OTLP/HTTP endpoints:
+
+```ts
+const collector =
+  yield *
+  KubernetesAddons.OtelCollector("TelemetryGateway", {
+    cluster,
+    destination: {
+      endpoints: parseable.endpoints,
+      authentication: {
+        type: "basic",
+        secretRef: parseable.credentialsSecretRef,
+      },
+    },
+  });
+```
+
+When authentication is configured, the collector runs in the Secret's namespace
+because Kubernetes cannot reference Secrets across namespaces. It adopts that
+namespace instead of claiming ownership. Destination headers are stored in a
+collector-owned Secret; the Helm values and generated ConfigMap contain only
+environment-variable placeholders. Secret resource versions are copied to pod
+annotations so a credential update rolls the Deployment.
+
+Applications send unauthenticated OTLP/HTTP to the ClusterIP-only gateway:
+
+```ts
+vars: {
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: collector.otelTracesEndpoint,
+  OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: collector.otelLogsEndpoint,
+}
+```
+
+The first release deliberately enables only port 4318 and only destination
+pipelines that were configured. It does not expose Ingress, OTLP/gRPC, host log
+collection, Kubernetes event collection, or cluster-wide scraping; those need
+different trust and RBAC boundaries.

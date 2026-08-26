@@ -85,8 +85,10 @@ const collector =
     cluster,
     destination: {
       endpoints: parseable.endpoints,
-      credentialsSecretRef: parseable.credentialsSecretRef,
-      authentication: "basic",
+      authentication: {
+        type: "basic",
+        secretRef: parseable.credentialsSecretRef,
+      },
     },
   });
 ```
@@ -370,33 +372,36 @@ const parseable =
 
 ## Phase 3: generic OTEL collector add-on
 
-- [ ] Implement `KubernetesAddons.OtelCollector` for any
+- [x] Implement `KubernetesAddons.OtelCollector` for any
       `Kubernetes.ClusterLike`.
-- [ ] Accept endpoint options compatible with `Alchemy.Telemetry.OtlpOptions`
+- [x] Accept endpoint options compatible with `Alchemy.Telemetry.OtlpOptions`
       plus an optional Kubernetes credential Secret reference.
-- [ ] Compose Parseable's signal-specific `X-P-Stream` and `X-P-Log-Source`
+- [x] Compose Parseable's signal-specific `X-P-Stream` and `X-P-Log-Source`
       headers with Basic authentication loaded from its Secret.
-- [ ] Pin the OpenTelemetry Collector Helm chart.
-- [ ] Pin the collector image version or digest.
-- [ ] Run v1 as an in-cluster gateway Deployment.
-- [ ] Expose an OTLP/HTTP receiver on port 4318.
-- [ ] Add OTLP/gRPC on port 4317 only when a real consumer requires it.
-- [ ] Build only the traces, logs, and metrics pipelines present in the
+- [x] Pin the OpenTelemetry Collector Helm chart.
+- [x] Pin the collector image by its multi-architecture digest.
+- [x] Run v1 as an in-cluster gateway Deployment.
+- [x] Expose an OTLP/HTTP receiver on port 4318.
+- [x] Keep OTLP/gRPC on port 4317 disabled until a real consumer requires it.
+- [x] Build only the traces, logs, and metrics pipelines present in the
       destination.
-- [ ] Store exporter credentials in `KubernetesAddons.Secret`.
-- [ ] Reference credentials through collector environment variables rather than
+- [x] Store exporter header values in `KubernetesAddons.Secret` and reuse the
+      destination's namespaced Secret for Basic authentication.
+- [x] Reference credentials through collector environment variables rather than
       embedding them in Helm values.
-- [ ] Force a rollout with a non-secret credential checksum when credentials
+- [x] Force a rollout with non-secret Secret resource versions when credentials
       rotate.
-- [ ] Expose only a ClusterIP Service.
-- [ ] Install through `KubernetesAddons.ReadyHelmChart`.
-- [ ] Expose Axiom-compatible internal OTLP endpoint outputs.
-- [ ] Type-test both Hetzner and Docker K3s clusters as inputs.
-- [ ] Test that rendered chart inputs contain no plaintext credential.
+- [x] Expose only a ClusterIP Service.
+- [x] Install through `KubernetesAddons.ReadyHelmChart`.
+- [x] Expose Axiom-compatible internal OTLP endpoint outputs.
+- [x] Type-test both Hetzner and Docker K3s clusters as inputs.
+- [x] Test that rendered chart inputs contain no plaintext credential.
+- [x] Render the pinned chart and validate the generated configuration with the
+      pinned collector binary.
 - [ ] Start the collector on k3d.
 - [ ] Send traces, logs, and metrics through it.
 - [ ] Test credential rotation and collector rollout.
-- [ ] Test removal of a signal pipeline.
+- [x] Test removal of a signal pipeline.
 
 Target API:
 
@@ -407,8 +412,10 @@ const collector =
     cluster,
     destination: {
       endpoints: parseable.endpoints,
-      credentialsSecretRef: parseable.credentialsSecretRef,
-      authentication: "basic",
+      authentication: {
+        type: "basic",
+        secretRef: parseable.credentialsSecretRef,
+      },
     },
   });
 ```
@@ -638,7 +645,7 @@ yield *
 - [ ] Show ExternalDNS.
 - [ ] Show cert-manager and Let's Encrypt.
 - [x] Show the Parseable S3 backend and optional Ingress.
-- [ ] Show the optional OTEL collector.
+- [x] Show the optional OTEL collector.
 - [ ] Show an application Deployment, Service, Ingress, and Certificate.
 - [ ] Document provider registration and required deployment credentials.
 - [ ] Document that cluster provisioning does not own DNS, TLS, or
@@ -689,7 +696,7 @@ yield *
 - [ ] Pin every chart version and image version or digest.
 - [ ] Prove no credential is embedded in Helm values or ConfigMaps.
 - [ ] Prove no Cloudflare runtime token has all-zone access.
-- [ ] Prove no OTEL collector Service is public.
+- [x] Prove the rendered OTEL collector Service is ClusterIP-only.
 - [ ] Add negative tests for insufficient Cloudflare permissions.
 - [ ] Bound every readiness wait and external API operation.
 - [ ] Ensure cleanup failures retain exact resources rather than deleting
@@ -803,7 +810,7 @@ Automatic initial-control-plane recovery (P1):
 - [x] 8. Scaffold `alchemy-kubernetes-addons`.
 - [x] 9. Retire the superseded `alchemy-grafana` credential scaffold.
 - [x] 10. Implement the S3-backed Parseable add-on and optional Ingress.
-- [ ] 11. Implement the OTEL collector gateway.
+- [x] 11. Implement the OTEL collector gateway.
 - [ ] 12. Implement Cloudflare ExternalDNS.
 - [ ] 13. Implement cert-manager.
 - [ ] 14. Implement the Cloudflare ACME issuer.

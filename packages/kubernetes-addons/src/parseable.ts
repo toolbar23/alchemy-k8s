@@ -27,7 +27,7 @@ export interface ParseableIngressProps {
 }
 
 export interface ParseableProps {
-  cluster: Kubernetes.ClusterLike;
+  cluster: Input<Kubernetes.ClusterLike>;
   storage: S3BucketAccess;
   namespace?: string;
   releaseName?: string;
@@ -73,6 +73,7 @@ export interface ParseableResult extends ParseableOtlpEndpoints {
     name: string;
     usernameKey: "username";
     passwordKey: "password";
+    resourceVersion: Input<string | undefined>;
   };
   /** Endpoint-only OTLP shape. Authentication is mounted from the Secret by the collector. */
   endpoints: Pick<Telemetry.OtlpOptions, "url" | "traces" | "logs" | "metrics">;
@@ -375,6 +376,7 @@ export const Parseable = (id: string, props: ParseableProps) =>
         name: `${releaseName}-env`,
         usernameKey: "username",
         passwordKey: "password",
+        resourceVersion: secret.resourceVersion,
       },
       endpoints: otlp.endpoints,
       ...(props.ingress === undefined
