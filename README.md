@@ -661,12 +661,15 @@ Bootstrap every unpublished workspace interactively from a trusted workstation
 using npm 2FA:
 
 ```sh
-mise run publish:dry-run
-mise run publish
+mise install
+mise exec -- just release-dry-run
+mise exec -- just release
 ```
 
-The task verifies the npm login, installs from the lockfile, runs the complete
-check suite, and publishes every public workspace that does not exist on npm.
+`just release` delegates to the repository's guarded `mise run publish` task. It
+verifies the npm login, installs from the lockfile, runs the complete check
+suite, and publishes every public workspace that does not exist on npm. With
+mise activated in the shell, the shorter `just release` command is equivalent.
 Already-published versions are skipped. If a package already exists but the
 workspace contains a new version, the task stops and directs that release to
 GitHub OIDC instead. Provenance is disabled only for a package's one-time local
