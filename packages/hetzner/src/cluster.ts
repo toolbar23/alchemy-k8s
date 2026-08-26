@@ -9,7 +9,8 @@ import {
 } from "../../shared/src/definition.ts";
 import { ClusterState } from "./cluster-state.ts";
 import { Node } from "./node.ts";
-import type { ClusterProps, NodeResource } from "./types.ts";
+import type { Providers } from "./providers.ts";
+import type { ClusterProps, ClusterResource, NodeResource } from "./types.ts";
 import {
   networkZoneFor,
   normalizeLocations,
@@ -267,4 +268,8 @@ export const Cluster = (id: string, props: ClusterProps) =>
           : { failureInjection: secretsEncryption.failureInjection }),
       },
     });
-  });
+  }) as Effect.Effect<
+    ClusterResource,
+    never,
+    Providers | Hetzner.Providers | Stage
+  >;

@@ -109,6 +109,12 @@ export const validateCloudflareExternalDnsProps = (
   ) {
     throw new Error("ExternalDNS tokenRevision must not be empty");
   }
+  if (
+    props.timeoutSeconds !== undefined &&
+    (!Number.isFinite(props.timeoutSeconds) || props.timeoutSeconds <= 0)
+  ) {
+    throw new Error("ExternalDNS timeoutSeconds must be greater than zero");
+  }
 };
 
 export const planCloudflareExternalDns = ({

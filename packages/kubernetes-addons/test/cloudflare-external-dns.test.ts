@@ -184,5 +184,8 @@ describe("KubernetesAddons.CloudflareExternalDns", () => {
         tokenRevision: "",
       }),
     ).toThrow("tokenRevision must not be empty");
+    expect(() =>
+      validateCloudflareExternalDnsProps({ ...base, timeoutSeconds: 0 }),
+    ).toThrow("timeoutSeconds must be greater than zero");
   });
 });

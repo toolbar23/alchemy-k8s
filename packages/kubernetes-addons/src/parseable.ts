@@ -144,6 +144,12 @@ export const validateParseableProps = (props: ParseableProps): void => {
       `Invalid Parseable TLS Secret name: ${props.ingress.tlsSecretName}`,
     );
   }
+  if (
+    props.timeoutSeconds !== undefined &&
+    (!Number.isFinite(props.timeoutSeconds) || props.timeoutSeconds <= 0)
+  ) {
+    throw new Error("Parseable timeoutSeconds must be greater than zero");
+  }
 };
 
 export const parseableHelmValues = ({

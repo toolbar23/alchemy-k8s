@@ -1,5 +1,7 @@
 import * as Redacted from "effect/Redacted";
 import { describe, expect, it } from "vitest";
+import type { ClusterResource as DockerCluster } from "../../docker/src/types.ts";
+import type { ClusterResource as HetznerCluster } from "../../hetzner/src/types.ts";
 import { Parseable, providers } from "../src/index.ts";
 import {
   PARSEABLE_CHART_VERSION,
@@ -8,7 +10,19 @@ import {
   parseableIngressManifest,
   parseableOtlpEndpoints,
   validateParseableProps,
+  type ParseableProps,
 } from "../src/parseable.ts";
+
+const acceptsCluster = (_cluster: ParseableProps["cluster"]): void =>
+  undefined;
+const compileClusterTypes = (
+  hetzner: HetznerCluster,
+  docker: DockerCluster,
+): void => {
+  acceptsCluster(hetzner);
+  acceptsCluster(docker);
+};
+void compileClusterTypes;
 
 const storage = {
   endpoint: "https://s3.example.com",
@@ -190,5 +204,12 @@ describe("KubernetesAddons.Parseable", () => {
         },
       }),
     ).toThrow("Invalid Parseable TLS Secret name");
+    expect(() =>
+      validateParseableProps({
+        cluster: {} as never,
+        storage,
+        timeoutSeconds: 0,
+      }),
+    ).toThrow("timeoutSeconds must be greater than zero");
   });
 });

@@ -32,6 +32,7 @@ let requests: ApiRequest[];
 let storedSecret: Record<string, unknown> | undefined;
 let failPatch: boolean;
 let failGet: boolean;
+let failDelete: boolean;
 let server: Server;
 
 beforeEach(async () => {
@@ -39,6 +40,7 @@ beforeEach(async () => {
   storedSecret = undefined;
   failPatch = false;
   failGet = false;
+  failDelete = false;
   server = createServer((request, response) => {
     let payload = "";
     request.on("data", (chunk) => {
@@ -83,6 +85,9 @@ beforeEach(async () => {
               data: { token: Buffer.from(canary).toString("base64") },
             })
           : JSON.stringify(storedSecret);
+      } else if (method === "DELETE" && failDelete) {
+        response.statusCode = 500;
+        responseBody = JSON.stringify({ message: `failed ${canary}` });
       } else if (method === "DELETE") {
         storedSecret = undefined;
         response.statusCode = 200;
@@ -274,6 +279,32 @@ describe("KubernetesAddons.Secret", () => {
     );
     expect(String(error)).toContain("Kubernetes API returned 500");
     expect(String(error)).not.toContain(canary);
+  });
+
+  it("retains the exact Secret when cleanup fails", async () => {
+    const session = { note: () => Effect.void };
+    const created = await runSecretProvider((provider) =>
+      provider.reconcile({
+        news: {
+          cluster: connection,
+          namespace: "apps",
+          name: "credentials",
+          stringData: { token: Redacted.make(canary) },
+        },
+        session,
+      } as never),
+    );
+    failDelete = true;
+    const error = await runSecretProvider((provider) =>
+      Effect.flip(provider.delete({ output: created } as never)),
+    );
+    expect(String(error)).toContain("Kubernetes API returned 500");
+    expect(String(error)).not.toContain(canary);
+    expect(storedSecret).toBeDefined();
+    expect(requests.at(-1)).toMatchObject({
+      method: "DELETE",
+      path: "/api/v1/namespaces/apps/secrets/credentials",
+    });
   });
 });
 

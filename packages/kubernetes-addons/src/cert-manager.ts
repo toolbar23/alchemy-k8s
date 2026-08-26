@@ -6,6 +6,7 @@ import { Readiness, type Readiness as ReadinessResource } from "./index.ts";
 
 export const CERT_MANAGER_CHART = "oci://quay.io/jetstack/charts/cert-manager";
 export const CERT_MANAGER_CHART_VERSION = "v1.21.1";
+export const CERT_MANAGER_IMAGE_VERSION = "v1.21.1";
 
 export interface CertManagerProps {
   cluster: Input<Kubernetes.ClusterLike>;
@@ -51,6 +52,10 @@ export const certManagerHelmValues = (
     leaderElection: { namespace },
     rbac: { create: true, aggregateClusterRoles: false },
   },
+  image: { tag: CERT_MANAGER_IMAGE_VERSION, pullPolicy: "IfNotPresent" },
+  acmesolver: {
+    image: { tag: CERT_MANAGER_IMAGE_VERSION, pullPolicy: "IfNotPresent" },
+  },
   replicaCount: 1,
   automountServiceAccountToken: true,
   podAnnotations: { "alchemy.run/namespace-revision": namespaceRevision },
@@ -72,6 +77,7 @@ export const certManagerHelmValues = (
     replicaCount: 1,
     timeoutSeconds: 10,
     automountServiceAccountToken: true,
+    image: { tag: CERT_MANAGER_IMAGE_VERSION, pullPolicy: "IfNotPresent" },
     podAnnotations: { "alchemy.run/namespace-revision": namespaceRevision },
     resources: {
       requests: { cpu: "10m", memory: "32Mi" },
@@ -92,6 +98,7 @@ export const certManagerHelmValues = (
     enabled: true,
     replicaCount: 1,
     automountServiceAccountToken: true,
+    image: { tag: CERT_MANAGER_IMAGE_VERSION, pullPolicy: "IfNotPresent" },
     podAnnotations: { "alchemy.run/namespace-revision": namespaceRevision },
     resources: {
       requests: { cpu: "10m", memory: "64Mi" },

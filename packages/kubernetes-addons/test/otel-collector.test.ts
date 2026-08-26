@@ -292,6 +292,13 @@ describe("KubernetesAddons.OtelCollector", () => {
     expect(() =>
       validateOtelCollectorProps({
         cluster: {} as never,
+        destination: parseableDestination,
+        timeoutSeconds: 0,
+      }),
+    ).toThrow("timeoutSeconds must be greater than zero");
+    expect(() =>
+      validateOtelCollectorProps({
+        cluster: {} as never,
         destination: { endpoints: {} },
       }),
     ).toThrow("at least one signal");

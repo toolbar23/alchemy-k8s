@@ -115,6 +115,12 @@ export const validateOtelCollectorProps = (props: OtelCollectorProps): void => {
       "OTEL collector cannot own a namespace that already contains its authentication Secret",
     );
   }
+  if (
+    props.timeoutSeconds !== undefined &&
+    (!Number.isFinite(props.timeoutSeconds) || props.timeoutSeconds <= 0)
+  ) {
+    throw new Error("OTEL collector timeoutSeconds must be greater than zero");
+  }
 
   const endpoints = props.destination.endpoints;
   if (

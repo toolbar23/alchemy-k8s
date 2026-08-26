@@ -4,6 +4,7 @@ import type { ClusterResource as HetznerCluster } from "../../hetzner/src/types.
 import {
   CERT_MANAGER_CHART,
   CERT_MANAGER_CHART_VERSION,
+  CERT_MANAGER_IMAGE_VERSION,
   certManagerHelmValues,
   validateCertManagerProps,
   type CertManagerProps,
@@ -26,6 +27,7 @@ describe("KubernetesAddons.CertManager", () => {
       "oci://quay.io/jetstack/charts/cert-manager",
     );
     expect(CERT_MANAGER_CHART_VERSION).toBe("v1.21.1");
+    expect(CERT_MANAGER_IMAGE_VERSION).toBe("v1.21.1");
     expect(certManagerHelmValues("cert-manager", "namespace-1")).toMatchObject({
       crds: { enabled: true, keep: true },
       startupapicheck: { enabled: false },
@@ -33,12 +35,24 @@ describe("KubernetesAddons.CertManager", () => {
         leaderElection: { namespace: "cert-manager" },
         rbac: { create: true, aggregateClusterRoles: false },
       },
+      image: { tag: "v1.21.1", pullPolicy: "IfNotPresent" },
+      acmesolver: {
+        image: { tag: "v1.21.1", pullPolicy: "IfNotPresent" },
+      },
       replicaCount: 1,
       podAnnotations: {
         "alchemy.run/namespace-revision": "namespace-1",
       },
-      webhook: { replicaCount: 1, timeoutSeconds: 10 },
-      cainjector: { enabled: true, replicaCount: 1 },
+      webhook: {
+        replicaCount: 1,
+        timeoutSeconds: 10,
+        image: { tag: "v1.21.1", pullPolicy: "IfNotPresent" },
+      },
+      cainjector: {
+        enabled: true,
+        replicaCount: 1,
+        image: { tag: "v1.21.1", pullPolicy: "IfNotPresent" },
+      },
     });
   });
 

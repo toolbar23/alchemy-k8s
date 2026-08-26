@@ -132,5 +132,8 @@ describe("KubernetesAddons.CloudflareAcmeIssuer", () => {
         environment: "preview" as never,
       }),
     ).toThrow("staging or production");
+    expect(() =>
+      validateCloudflareAcmeIssuerProps({ ...base, timeoutSeconds: 0 }),
+    ).toThrow("timeoutSeconds must be greater than zero");
   });
 });
