@@ -117,7 +117,7 @@ are useful even when the local implementation uses a different architecture.
 | Deletion protection        | Enabled by default and must be explicitly disabled before destroy                                                         | CLI confirmation/lifecycle controls                                                               | Local stronger declarative guard                                  |
 | Resource ownership         | Exact Alchemy resources with provider IDs and deletion graph                                                              | CLI labels/config-derived cleanup                                                                 | Local advantage                                                   |
 | Kubernetes composition     | Implements `Kubernetes.ClusterLike`                                                                                       | Produces kubeconfig for ordinary tooling                                                          | Local advantage inside Alchemy                                    |
-| ExternalDNS                | Planned separate add-on                                                                                                   | Not a core capability                                                                             | Separate add-on by design                                         |
+| ExternalDNS                | Zone-scoped Cloudflare add-on with Secret-backed token and TXT ownership                                                  | Not a core capability                                                                             | Separate add-on by design                                         |
 | cert-manager/Let's Encrypt | Planned separate add-ons                                                                                                  | Not a core capability                                                                             | Separate add-ons by design                                        |
 | OTEL/Parseable             | S3-backed Parseable and ClusterIP-only OTLP/HTTP collector add-ons implemented                                            | Not a core capability                                                                             | Separate add-ons by design                                        |
 
@@ -219,16 +219,19 @@ Secrets at runtime. New clusters enable K3s encryption at rest by default.
 Existing unencrypted clusters, and encrypted clusters moving from `aescbc` to
 `secretbox`, require the explicit snapshot-guarded migration option.
 
-Token updates currently reapply the Secrets without proving that every consumer
-reloads them. Deployment and DaemonSet pod-template annotations should include a
-non-secret token fingerprint so a change causes deterministic rollouts.
+Parseable, the OTEL collector, and ExternalDNS propagate non-secret Secret
+resource versions into pod-template annotations so credential changes cause
+deterministic rollouts. The remaining token-consuming workloads still need the
+same proof as they are implemented.
 
-The planned ExternalDNS, cert-manager, and OTEL add-ons can use the new
-Redacted-safe `KubernetesAddons.Secret`. It is implemented against Alchemy's
-public cluster-adapter API, unwraps values only at the API request boundary, and
-never reads Secret data back into state. Helm values must reference that Secret
-rather than carry credentials directly. Redacted desired inputs are still
-persisted by Alchemy, so production deployments require encrypted remote state.
+The implemented add-ons use the Redacted-safe `KubernetesAddons.Secret` against
+Alchemy's public cluster-adapter API. Values are unwrapped only at the API
+request boundary and Secret data is never read back into state. ExternalDNS's
+runtime token has only `Zone Read`, `DNS Read`, and `DNS Write` on the exact
+zone; Helm receives only a Secret reference. Its Kubernetes service account has
+cluster-wide read-only access for the enabled Service and Ingress sources.
+Redacted desired inputs are still persisted by Alchemy, so production
+deployments require encrypted remote state.
 
 ### Supply chain
 
@@ -481,14 +484,14 @@ CI cannot present a partial suite as an unexplained stop.
 ### P2: composable platform services
 
 Phase 0 completed the Redacted-safe `KubernetesAddons.Secret` primitive and the
-`ReadyHelmChart` composition without modifying Alchemy core. Parseable and the
-cluster-agnostic OTLP/HTTP collector gateway are implemented. The remaining
-platform-service tasks are:
+`ReadyHelmChart` composition without modifying Alchemy core. Parseable, the
+cluster-agnostic OTLP/HTTP collector gateway, and zone-scoped Cloudflare
+ExternalDNS are implemented. The remaining platform-service tasks are:
 
 1. E2E-test the implemented S3-backed Parseable add-on and its bundled UI.
 2. E2E-test collector signal routing and credential rotation on Docker and
    Hetzner K3s.
-3. Implement Cloudflare ExternalDNS with a zone-scoped token.
+3. E2E-test ExternalDNS record ownership and credential rotation.
 4. Implement generic cert-manager and a Cloudflare DNS-01 issuer.
 5. Keep Certificate ownership with each application or ingress.
 

@@ -23,6 +23,14 @@ import {
 } from "./client.ts";
 
 export {
+  CloudflareExternalDns,
+  EXTERNAL_DNS_CHART_VERSION,
+  EXTERNAL_DNS_IMAGE,
+  type CloudflareExternalDnsProps,
+  type CloudflareExternalDnsResult,
+} from "./cloudflare-external-dns.ts";
+
+export {
   OTEL_COLLECTOR_CHART_VERSION,
   OTEL_COLLECTOR_IMAGE,
   OtelCollector,

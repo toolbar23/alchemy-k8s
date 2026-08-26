@@ -429,86 +429,88 @@ features require materially broader RBAC and should become a separate
 
 ### 4.1 API and ownership
 
-- [ ] Implement `KubernetesAddons.CloudflareExternalDns` for any
+- [x] Implement `KubernetesAddons.CloudflareExternalDns` for any
       `Kubernetes.ClusterLike`.
-- [ ] Require an explicit managed or explicitly adopted Cloudflare Zone
+- [x] Require an explicit managed or explicitly adopted Cloudflare Zone
       resource.
-- [ ] Require `policy: "sync" | "upsert-only"` because `sync` authorizes
+- [x] Require `policy: "sync" | "upsert-only"` because `sync` authorizes
       deletion.
-- [ ] Support optional global Cloudflare proxy behavior.
-- [ ] Accept an optional pre-created Redacted token.
-- [ ] Keep the Cloudflare Zone retained by default.
-- [ ] Do not hide zone creation or adoption inside ExternalDNS.
+- [x] Support optional global Cloudflare proxy behavior.
+- [x] Accept an optional pre-created Redacted token.
+- [x] Keep the Cloudflare Zone retained by default.
+- [x] Do not hide zone creation or adoption inside ExternalDNS.
 
 Target props:
 
 ```ts
 interface CloudflareExternalDnsProps {
-  cluster: Kubernetes.ClusterLike;
+  cluster: Input<Kubernetes.ClusterLike>;
   zone: Cloudflare.Zone.Zone;
   policy: "sync" | "upsert-only";
   proxied?: boolean;
   token?: Input<Redacted<string>>;
+  tokenRevision?: Input<string>;
 }
 ```
 
 ### 4.2 Token and Secret
 
-- [ ] Mint a Cloudflare account token when `token` is omitted.
-- [ ] Grant only `Zone Read`, `DNS Read`, and `DNS Write`.
-- [ ] Scope the token to `com.cloudflare.api.account.zone.<zoneId>`.
-- [ ] Never grant an all-zone wildcard.
-- [ ] Create an `external-dns` namespace.
-- [ ] Store the token in `KubernetesAddons.Secret`.
-- [ ] Put only the Secret name and key into Helm values.
-- [ ] Add a non-secret token fingerprint annotation to the Deployment.
-- [ ] Roll and wait for ExternalDNS when the token changes.
-- [ ] Support an explicit `tokenRevision` only if a pre-created token cannot
+- [x] Mint a Cloudflare account token when `token` is omitted.
+- [x] Grant only `Zone Read`, `DNS Read`, and `DNS Write`.
+- [x] Scope the token to `com.cloudflare.api.account.zone.<zoneId>`.
+- [x] Never grant an all-zone wildcard.
+- [x] Create an `external-dns` namespace.
+- [x] Store the token in `KubernetesAddons.Secret`.
+- [x] Put only the Secret name and key into Helm values.
+- [x] Add the Secret's non-secret resource version annotation to the Deployment.
+- [x] Roll and wait for ExternalDNS when the token changes.
+- [x] Support an explicit `tokenRevision` only if a pre-created token cannot
       produce a safe rotation fingerprint.
 
 ### 4.3 ExternalDNS chart
 
-- [ ] Install a pinned ExternalDNS Helm chart and image.
-- [ ] Enable only the `service` and `ingress` sources initially.
-- [ ] Set `provider=cloudflare`.
-- [ ] Set the exact `zone-id-filter`.
-- [ ] Set the exact `domain-filter`.
-- [ ] Derive a stable `txt-owner-id` from stack, stage, and logical resource
+- [x] Install a pinned ExternalDNS Helm chart and digest-pinned image.
+- [x] Enable only the `service` and `ingress` sources initially.
+- [x] Set `provider=cloudflare`.
+- [x] Set the exact `zone-id-filter`.
+- [x] Set the exact `domain-filter`.
+- [x] Derive a stable `txt-owner-id` from stack, stage, and logical resource
       identity.
-- [ ] Use the TXT registry.
-- [ ] Apply the requested policy and proxy behavior.
-- [ ] Configure a high Cloudflare DNS-record page size.
-- [ ] Install through `KubernetesAddons.ReadyHelmChart`.
-- [ ] Return zone, namespace, release name, and TXT owner ID as outputs.
+- [x] Use the TXT registry.
+- [x] Apply the requested policy and proxy behavior.
+- [x] Configure Cloudflare's maximum DNS-record page size of 5,000.
+- [x] Install through `KubernetesAddons.ReadyHelmChart`.
+- [x] Return zone, namespace, release name, and TXT owner ID as outputs.
+- [x] Render the pinned chart and run the digest-pinned image's version check.
 
 Reference:
 [ExternalDNS Cloudflare guide](https://kubernetes-sigs.github.io/external-dns/latest/docs/tutorials/cloudflare/).
 
 ### 4.4 Record ownership
 
-- [ ] Document that Alchemy owns the zone, token, Secret, and controller.
-- [ ] Document that ExternalDNS exclusively owns its dynamic A/CNAME and
+- [x] Document that Alchemy owns the zone, token, Secret, and controller.
+- [x] Document that ExternalDNS exclusively owns its dynamic A/AAAA/CNAME and
       registry TXT records.
-- [ ] Do not declare ExternalDNS-owned records with `Cloudflare.DNS.Record`.
-- [ ] Reserve `_acme-challenge` TXT records for cert-manager.
-- [ ] Leave registrar nameserver delegation external unless a registrar provider
+- [x] Do not declare ExternalDNS-owned records with `Cloudflare.DNS.Record`.
+- [x] Reserve `_acme-challenge` TXT records for cert-manager.
+- [x] Leave registrar nameserver delegation external unless a registrar provider
       is added.
-- [ ] Document that application removal under `sync` removes owned records while
+- [x] Document that application removal under `sync` removes owned records while
       ExternalDNS is running.
-- [ ] Do not perform a dangerous zone-wide sweep when the add-on itself is
+- [x] Do not perform a dangerous zone-wide sweep when the add-on itself is
       destroyed.
-- [ ] Document explicit cleanup for any records left after controller
+- [x] Document explicit cleanup for any records left after controller
       destruction.
 
 ### 4.5 ExternalDNS tests
 
-- [ ] Test the exact zone resource in the token policy.
-- [ ] Test that no all-zone wildcard is present.
-- [ ] Test that Helm values contain only Secret references.
-- [ ] Test domain, zone, policy, proxy, and owner-ID arguments.
-- [ ] Test owner-ID stability across idempotent applies.
-- [ ] Test distinct owner IDs for distinct logical resources.
-- [ ] Test token rotation and Deployment rollout.
+- [x] Test the exact zone resource in the token policy.
+- [x] Test that no all-zone wildcard is present.
+- [x] Test that Helm values contain only Secret references.
+- [x] Test domain, zone, policy, proxy, and owner-ID arguments.
+- [x] Test owner-ID stability across idempotent applies.
+- [x] Test distinct owner IDs for distinct logical resources.
+- [x] Test token rotation and Deployment rollout inputs.
 - [ ] Live-test record creation and update.
 - [ ] Live-test record removal under `sync`.
 - [ ] Prove a record owned by another TXT owner is untouched.
@@ -641,21 +643,21 @@ yield *
 ## Phase 6: documentation and examples
 
 - [ ] Add one end-to-end example with a Hetzner cluster.
-- [ ] Show explicit Cloudflare Zone creation or adoption.
-- [ ] Show ExternalDNS.
+- [x] Show explicit Cloudflare Zone creation or adoption.
+- [x] Show ExternalDNS.
 - [ ] Show cert-manager and Let's Encrypt.
 - [x] Show the Parseable S3 backend and optional Ingress.
 - [x] Show the optional OTEL collector.
 - [ ] Show an application Deployment, Service, Ingress, and Certificate.
-- [ ] Document provider registration and required deployment credentials.
-- [ ] Document that cluster provisioning does not own DNS, TLS, or
+- [x] Document provider registration and required deployment credentials.
+- [x] Document that cluster provisioning does not own DNS, TLS, or
       observability.
-- [ ] Document ExternalDNS and cert-manager record ownership boundaries.
+- [x] Document ExternalDNS and cert-manager record ownership boundaries.
 - [ ] Document that Cloudflare tokens are separate by default for independent
       rotation and revocation.
 - [ ] Document the increased coupling when one pre-created token is shared.
-- [ ] Document that Zone destruction is never implicit.
-- [ ] Document the deletion behavior of ExternalDNS `sync`.
+- [x] Document that Zone destruction is never implicit.
+- [x] Document the deletion behavior of ExternalDNS `sync`.
 - [ ] Document Kubernetes Secret encryption and encrypted Alchemy state as
       production requirements.
 - [x] Explain that Parseable is the backend/UI while the OTEL collector is the
@@ -695,7 +697,7 @@ yield *
 - [ ] Exercise encrypted remote Alchemy state.
 - [ ] Pin every chart version and image version or digest.
 - [ ] Prove no credential is embedded in Helm values or ConfigMaps.
-- [ ] Prove no Cloudflare runtime token has all-zone access.
+- [x] Prove no Cloudflare runtime token has all-zone access.
 - [x] Prove the rendered OTEL collector Service is ClusterIP-only.
 - [ ] Add negative tests for insufficient Cloudflare permissions.
 - [ ] Bound every readiness wait and external API operation.
@@ -811,7 +813,7 @@ Automatic initial-control-plane recovery (P1):
 - [x] 9. Retire the superseded `alchemy-grafana` credential scaffold.
 - [x] 10. Implement the S3-backed Parseable add-on and optional Ingress.
 - [x] 11. Implement the OTEL collector gateway.
-- [ ] 12. Implement Cloudflare ExternalDNS.
+- [x] 12. Implement Cloudflare ExternalDNS.
 - [ ] 13. Implement cert-manager.
 - [ ] 14. Implement the Cloudflare ACME issuer.
 - [ ] 15. Add local integration tests.

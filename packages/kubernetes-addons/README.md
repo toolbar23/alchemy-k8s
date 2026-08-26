@@ -60,6 +60,59 @@ values. Readiness errors expose object identity, status codes, replica counts,
 and condition type/status only; manifest bodies and condition text are not
 included.
 
+## Cloudflare ExternalDNS
+
+Create or explicitly adopt the Cloudflare zone separately, then pass that
+resource to the add-on:
+
+```ts
+import { adopt } from "alchemy/AdoptPolicy";
+
+const zone =
+  yield *
+  Cloudflare.Zone.Zone("PublicZone", {
+    name: "example.com",
+  }).pipe(adopt(true));
+
+const publicDns =
+  yield *
+  KubernetesAddons.CloudflareExternalDns("PublicDns", {
+    cluster,
+    zone,
+    policy: "sync",
+    proxied: true,
+  });
+```
+
+Omit `adopt(true)` when Alchemy should create a new zone. Cloudflare zones are
+retained by default, and this add-on never creates or destroys the zone
+implicitly. Registrar nameserver delegation also remains external.
+
+Unless `token` is supplied, Alchemy mints an account-owned runtime token with
+only `Zone Read`, `DNS Read`, and `DNS Write`, scoped to exactly
+`com.cloudflare.api.account.zone.<zoneId>`. The deployment credential therefore
+needs `Account API Tokens Write`; it additionally needs `Zone Read` to adopt a
+zone or `Zone Write` to create one. Configure it using `alchemy login` or
+`CLOUDFLARE_ACCOUNT_ID` plus `CLOUDFLARE_API_TOKEN`, never as source code.
+
+The runtime token is written through `KubernetesAddons.Secret`. Helm receives
+only the Secret name/key, while the Secret resource version rolls and re-waits
+the controller after rotation. A pre-created Redacted token can be passed with
+an optional non-secret `tokenRevision` when its rotation cannot otherwise be
+observed safely.
+
+ExternalDNS watches only Services and Ingresses, filters both the zone ID and
+domain, and records ownership with a stack/stage/resource-specific TXT owner ID.
+It exclusively owns the A/AAAA/CNAME records it derives and their registry TXT
+records. Do not declare the same records with `Cloudflare.DNS.Record`.
+cert-manager separately owns `_acme-challenge` TXT records.
+
+With `policy: "sync"`, remove an application's Service/Ingress DNS declaration
+and wait for reconciliation before destroying ExternalDNS; then its owned
+records are removed. Destroying the controller itself deliberately performs no
+zone-wide sweep, so records left behind require explicit cleanup. Use
+`upsert-only` when record deletion is not authorized.
+
 ## Parseable
 
 `Parseable` composes a Namespace, write-only Secret, pinned upstream Helm chart,

@@ -9,8 +9,8 @@ Kubernetes services:
 - [`alchemy-docker-k3s`](packages/docker): a persistent single-node local K3s
   cluster managed through k3d.
 - [`alchemy-kubernetes-addons`](packages/kubernetes-addons): Redacted-safe
-  Kubernetes Secrets, bounded Helm workload readiness, and an S3-backed
-  Parseable observability add-on with optional Ingress.
+  Kubernetes Secrets, bounded Helm workload readiness, Cloudflare ExternalDNS,
+  and S3-backed Parseable/OTLP observability add-ons.
 - [`alchemy-s3-access`](packages/s3-access): the provider-neutral, Redacted
   credential contract used to pass scoped S3-compatible bucket access.
 
@@ -242,6 +242,51 @@ yield *
 
 Timeout and terminal-failure errors identify the object and sanitized conditions
 without including manifests, Secret bodies, or environment values.
+
+### Cloudflare ExternalDNS
+
+DNS ownership is an optional add-on rather than part of either cluster provider.
+Create or explicitly adopt the retained Cloudflare zone, then attach the
+zone-scoped controller:
+
+```ts
+import * as Cloudflare from "alchemy/Cloudflare";
+import { adopt } from "alchemy/AdoptPolicy";
+
+const zone =
+  yield *
+  Cloudflare.Zone.Zone("PublicZone", {
+    name: "example.com",
+  }).pipe(adopt(true));
+
+const publicDns =
+  yield *
+  KubernetesAddons.CloudflareExternalDns("PublicDns", {
+    cluster,
+    zone,
+    policy: "sync",
+    proxied: true,
+  });
+```
+
+Register `Cloudflare.providers()` alongside the Kubernetes and add-on providers.
+The deployment credential comes from `alchemy login` or `CLOUDFLARE_ACCOUNT_ID`
+plus `CLOUDFLARE_API_TOKEN`. To mint the default runtime token it needs
+account-scoped `Account API Tokens Write` and `Zone Read` for an existing zone;
+creating the zone also needs `Zone Write`.
+
+The generated runtime token grants only `Zone Read`, `DNS Read`, and `DNS Write`
+for the exact zone. Its value crosses into Kubernetes through the write-only
+Secret resource; Helm sees only a Secret reference. ExternalDNS filters the
+exact zone ID and domain, watches only Services and Ingresses, and uses a stable
+TXT registry owner derived from stack, stage, and logical resource identity.
+
+ExternalDNS exclusively owns its dynamic A/AAAA/CNAME and registry TXT records.
+Do not also create those records with `Cloudflare.DNS.Record`; cert-manager owns
+`_acme-challenge` records. Under `sync`, delete application DNS declarations and
+wait for reconciliation before destroying the controller. Controller destruction
+intentionally does not sweep the zone, and the zone itself remains retained.
+Registrar nameserver delegation is external.
 
 ### Parseable observability
 
