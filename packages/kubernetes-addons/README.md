@@ -113,6 +113,82 @@ records are removed. Destroying the controller itself deliberately performs no
 zone-wide sweep, so records left behind require explicit cleanup. Use
 `upsert-only` when record deletion is not authorized.
 
+## cert-manager and Cloudflare ACME
+
+Install cert-manager independently of DNS and application workloads, then add an
+issuer for one explicit Cloudflare zone:
+
+```ts
+const certManager =
+  yield *
+  KubernetesAddons.CertManager("Certificates", {
+    cluster,
+  });
+
+const issuer =
+  yield *
+  KubernetesAddons.CloudflareAcmeIssuer("LetsEncrypt", {
+    cluster,
+    certManager,
+    zone,
+    email: "platform@example.com",
+    environment: "staging",
+  });
+```
+
+`CertManager` installs the pinned upstream OCI chart, owns its CRDs, hardens the
+controller, webhook, and CA injector containers, and returns only after all
+three workloads and the CRDs are ready. `CloudflareAcmeIssuer` then creates a
+zone-scoped account token with only `Zone Read` and `DNS Write`, writes it
+through the write-only Secret resource, and waits for its `ClusterIssuer` to
+become ready. The returned `issuerRef.name` carries that readiness dependency,
+so a directly composed Certificate is not submitted against an unready issuer.
+
+ExternalDNS and ACME receive separate tokens by default. That lets either
+credential be rotated or revoked independently: ExternalDNS needs DNS Read for
+its registry, while cert-manager does not. Supplying the same pre-created
+`Redacted` token to both add-ons intentionally couples their permissions,
+rotation, and outage domain.
+
+Applications own their domains, Certificate manifests, TLS Secret names, and
+Ingress/Gateway references:
+
+```ts
+yield *
+  Kubernetes.Manifest("ApiCertificate", {
+    cluster,
+    manifest: {
+      apiVersion: "cert-manager.io/v1",
+      kind: "Certificate",
+      metadata: { name: "api-tls", namespace: "api" },
+      spec: {
+        secretName: "api-tls",
+        dnsNames: ["api.example.com"],
+        issuerRef: issuer.issuerRef,
+      },
+    },
+  });
+```
+
+cert-manager generates and rotates the private key inside Kubernetes; Alchemy
+state contains the public Certificate request but not the issued TLS Secret.
+cert-manager exclusively owns temporary `_acme-challenge` records and removes
+them after validation. It also owns the stable ACME account-key Secret named by
+the issuer. Do not model either kind of record with `Cloudflare.DNS.Record`.
+
+Always prove a new setup with `environment: "staging"`. The production smoke
+check is deliberately manual to avoid consuming Let's Encrypt production rate
+limits:
+
+1. Create a distinct production issuer logical resource with
+   `environment: "production"`.
+2. Request one Certificate for a unique hostname and wait for
+   `Certificate Ready=True`.
+3. Inspect the public certificate issuer and confirm it is not a staging chain;
+   never print the TLS private key.
+4. Remove that Certificate and issuer from the stack, then confirm the exact
+   `_acme-challenge` record and managed token are gone while the Zone remains.
+
 ## Parseable
 
 `Parseable` composes a Namespace, write-only Secret, pinned upstream Helm chart,

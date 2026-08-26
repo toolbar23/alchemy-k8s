@@ -519,16 +519,16 @@ Reference:
 
 ### 5.1 Generic `CertManager`
 
-- [ ] Implement `KubernetesAddons.CertManager` for any `Kubernetes.ClusterLike`.
-- [ ] Create the `cert-manager` namespace.
-- [ ] Install a pinned OCI cert-manager Helm chart.
-- [ ] Enable and own its CRDs.
-- [ ] Disable Helm-hook-dependent startup checks if Alchemy cannot execute their
+- [x] Implement `KubernetesAddons.CertManager` for any `Kubernetes.ClusterLike`.
+- [x] Create the `cert-manager` namespace.
+- [x] Install a pinned OCI cert-manager Helm chart.
+- [x] Enable and own its CRDs.
+- [x] Disable Helm-hook-dependent startup checks if Alchemy cannot execute their
       lifecycle correctly.
-- [ ] Wait for CRDs, controller, webhook, and CA injector readiness.
-- [ ] Return namespace, cluster-resource namespace, chart, and readiness
+- [x] Wait for CRDs, controller, webhook, and CA injector readiness.
+- [x] Return namespace, cluster-resource namespace, chart, and readiness
       outputs.
-- [ ] Keep v1 opinionated; do not expose arbitrary chart-values passthrough.
+- [x] Keep v1 opinionated; do not expose arbitrary chart-values passthrough.
 
 Target API:
 
@@ -545,22 +545,22 @@ Reference:
 
 ### 5.2 `CloudflareAcmeIssuer`
 
-- [ ] Implement `KubernetesAddons.CloudflareAcmeIssuer`.
-- [ ] Require the `CertManager` result to establish a dependency on a ready
+- [x] Implement `KubernetesAddons.CloudflareAcmeIssuer`.
+- [x] Require the `CertManager` result to establish a dependency on a ready
       webhook and CRDs.
-- [ ] Require an explicit Cloudflare Zone resource.
-- [ ] Require a contact email.
-- [ ] Require `environment: "staging" | "production"`.
-- [ ] Accept an optional pre-created Redacted token.
-- [ ] Mint a dedicated Cloudflare account token when none is supplied.
-- [ ] Grant only `Zone Read` and `DNS Write`.
-- [ ] Scope the token to the exact Cloudflare Zone.
-- [ ] Store it in cert-manager's cluster-resource namespace.
-- [ ] Create a `ClusterIssuer` using the correct staging or production ACME
+- [x] Require an explicit Cloudflare Zone resource.
+- [x] Require a contact email.
+- [x] Require `environment: "staging" | "production"`.
+- [x] Accept an optional pre-created Redacted token.
+- [x] Mint a dedicated Cloudflare account token when none is supplied.
+- [x] Grant only `Zone Read` and `DNS Write`.
+- [x] Scope the token to the exact Cloudflare Zone.
+- [x] Store it in cert-manager's cluster-resource namespace.
+- [x] Create a `ClusterIssuer` using the correct staging or production ACME
       endpoint.
-- [ ] Restrict the DNS-01 solver with `selector.dnsZones`.
-- [ ] Use a stable cert-manager ACME account Secret name.
-- [ ] Return a directly usable `issuerRef`.
+- [x] Restrict the DNS-01 solver with `selector.dnsZones`.
+- [x] Use a stable cert-manager ACME account Secret name.
+- [x] Return a directly usable `issuerRef`.
 
 Target props:
 
@@ -594,13 +594,13 @@ Reference:
 
 ### 5.3 Application certificate ownership
 
-- [ ] Document that each application owns its requested domains, Certificate,
+- [x] Document that each application owns its requested domains, Certificate,
       TLS Secret name, and Ingress/Gateway reference.
-- [ ] Use ordinary `Kubernetes.Manifest` Certificate resources initially.
-- [ ] Let cert-manager generate and rotate certificate private keys inside
+- [x] Use ordinary `Kubernetes.Manifest` Certificate resources initially.
+- [x] Let cert-manager generate and rotate certificate private keys inside
       Kubernetes.
-- [ ] Do not put issued private keys into Alchemy state.
-- [ ] Do not add a custom Certificate wrapper until repeated application code
+- [x] Do not put issued private keys into Alchemy state.
+- [x] Do not add a custom Certificate wrapper until repeated application code
       proves it is useful.
 
 Example:
@@ -627,25 +627,25 @@ yield *
 
 ### 5.4 Let's Encrypt E2E
 
-- [ ] Use a delegated test zone.
-- [ ] Use the Let's Encrypt staging environment in automation.
-- [ ] Install cert-manager and create the Cloudflare issuer.
-- [ ] Request a unique staging certificate.
-- [ ] Wait for `Certificate Ready=True`.
-- [ ] Verify the resulting Secret contains a certificate and private key.
-- [ ] Verify the certificate chains to the staging issuer.
-- [ ] Verify temporary `_acme-challenge` records disappear.
-- [ ] Rotate the Cloudflare credential and issue another certificate.
-- [ ] Destroy the Certificate, issuer, token, and controllers.
-- [ ] Verify the Cloudflare Zone is retained.
-- [ ] Add a separate manual production smoke check.
+- [x] Use a delegated test zone.
+- [x] Use the Let's Encrypt staging environment in automation.
+- [x] Install cert-manager and create the Cloudflare issuer.
+- [x] Request a unique staging certificate.
+- [x] Wait for `Certificate Ready=True`.
+- [x] Verify the resulting Secret contains a certificate and private key.
+- [x] Verify the certificate chains to the staging issuer.
+- [x] Verify temporary `_acme-challenge` records disappear.
+- [x] Rotate the Cloudflare credential and issue another certificate.
+- [x] Destroy the Certificate, issuer, token, and controllers.
+- [x] Verify the Cloudflare Zone is retained.
+- [x] Add a separate manual production smoke check.
 
 ## Phase 6: documentation and examples
 
 - [ ] Add one end-to-end example with a Hetzner cluster.
 - [x] Show explicit Cloudflare Zone creation or adoption.
 - [x] Show ExternalDNS.
-- [ ] Show cert-manager and Let's Encrypt.
+- [x] Show cert-manager and Let's Encrypt.
 - [x] Show the Parseable S3 backend and optional Ingress.
 - [x] Show the optional OTEL collector.
 - [ ] Show an application Deployment, Service, Ingress, and Certificate.
@@ -653,12 +653,12 @@ yield *
 - [x] Document that cluster provisioning does not own DNS, TLS, or
       observability.
 - [x] Document ExternalDNS and cert-manager record ownership boundaries.
-- [ ] Document that Cloudflare tokens are separate by default for independent
+- [x] Document that Cloudflare tokens are separate by default for independent
       rotation and revocation.
-- [ ] Document the increased coupling when one pre-created token is shared.
+- [x] Document the increased coupling when one pre-created token is shared.
 - [x] Document that Zone destruction is never implicit.
 - [x] Document the deletion behavior of ExternalDNS `sync`.
-- [ ] Document Kubernetes Secret encryption and encrypted Alchemy state as
+- [x] Document Kubernetes Secret encryption and encrypted Alchemy state as
       production requirements.
 - [x] Explain that Parseable is the backend/UI while the OTEL collector is the
       credential boundary and transport/gateway.
@@ -683,7 +683,7 @@ yield *
 - [ ] Render all Helm charts for both cluster types.
 - [ ] Exercise controller readiness on both cluster types.
 - [ ] Run the OTEL gateway on both cluster types.
-- [ ] Run Cloudflare live tests on Hetzner K3s.
+- [x] Run Cloudflare live tests on Hetzner K3s.
 - [ ] Run cert-manager locally and Let's Encrypt staging on Hetzner K3s.
 - [ ] Test Secret rotation on both cluster types.
 - [ ] Test idempotence for every add-on.
@@ -814,8 +814,8 @@ Automatic initial-control-plane recovery (P1):
 - [x] 10. Implement the S3-backed Parseable add-on and optional Ingress.
 - [x] 11. Implement the OTEL collector gateway.
 - [x] 12. Implement Cloudflare ExternalDNS.
-- [ ] 13. Implement cert-manager.
-- [ ] 14. Implement the Cloudflare ACME issuer.
+- [x] 13. Implement cert-manager.
+- [x] 14. Implement the Cloudflare ACME issuer.
 - [ ] 15. Add local integration tests.
 - [ ] 16. Run live Parseable, Cloudflare, and Let's Encrypt staging E2E.
 - [ ] 17. Add documentation and examples.

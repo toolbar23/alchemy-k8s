@@ -11,7 +11,7 @@ import {
   kubernetesObjectReadiness,
   type Secret as SecretResource,
 } from "../src/index.ts";
-import { requestJson, waitForObjectsReady } from "../src/client.ts";
+import { objectPath, requestJson, waitForObjectsReady } from "../src/client.ts";
 
 const canary = "phase0-canary-secret-value";
 const connection: {
@@ -278,6 +278,16 @@ describe("KubernetesAddons.Secret", () => {
 });
 
 describe("KubernetesAddons readiness", () => {
+  it("uses the cluster-scoped cert-manager issuer endpoint", () => {
+    expect(
+      objectPath({
+        apiVersion: "cert-manager.io/v1",
+        kind: "ClusterIssuer",
+        name: "letsencrypt-staging",
+      }),
+    ).toBe("/apis/cert-manager.io/v1/clusterissuers/letsencrypt-staging");
+  });
+
   const deploymentRef = {
     apiVersion: "apps/v1",
     kind: "Deployment",
@@ -342,6 +352,18 @@ describe("KubernetesAddons readiness", () => {
         status: { observedGeneration: 1, readyReplicas: 2 },
       }).ready,
     ).toBe(true);
+    expect(
+      kubernetesObjectReadiness({
+        kind: "ClusterIssuer",
+        status: { conditions: [{ type: "Ready", status: "True" }] },
+      }).ready,
+    ).toBe(true);
+    expect(
+      kubernetesObjectReadiness({
+        kind: "ClusterIssuer",
+        status: { conditions: [{ type: "Ready", status: "False" }] },
+      }),
+    ).toMatchObject({ ready: false, terminal: false });
   });
 
   it("returns success, terminal failure, and sanitized timeout errors", async () => {

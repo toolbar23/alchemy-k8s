@@ -10,7 +10,8 @@ Kubernetes services:
   cluster managed through k3d.
 - [`alchemy-kubernetes-addons`](packages/kubernetes-addons): Redacted-safe
   Kubernetes Secrets, bounded Helm workload readiness, Cloudflare ExternalDNS,
-  and S3-backed Parseable/OTLP observability add-ons.
+  cert-manager/Let's Encrypt, and S3-backed Parseable/OTLP observability
+  add-ons.
 - [`alchemy-s3-access`](packages/s3-access): the provider-neutral, Redacted
   credential contract used to pass scoped S3-compatible bucket access.
 
@@ -287,6 +288,57 @@ Do not also create those records with `Cloudflare.DNS.Record`; cert-manager owns
 wait for reconciliation before destroying the controller. Controller destruction
 intentionally does not sweep the zone, and the zone itself remains retained.
 Registrar nameserver delegation is external.
+
+### cert-manager and Let's Encrypt
+
+TLS is another optional layer. Install cert-manager once, then create a
+provider-specific issuer for the retained zone:
+
+```ts
+const certManager =
+  yield * KubernetesAddons.CertManager("Certificates", { cluster });
+
+const issuer =
+  yield *
+  KubernetesAddons.CloudflareAcmeIssuer("LetsEncrypt", {
+    cluster,
+    certManager,
+    zone,
+    email: "platform@example.com",
+    environment: "staging",
+  });
+
+yield *
+  Kubernetes.Manifest("ApiCertificate", {
+    cluster,
+    manifest: {
+      apiVersion: "cert-manager.io/v1",
+      kind: "Certificate",
+      metadata: { name: "api-tls", namespace: "api" },
+      spec: {
+        secretName: "api-tls",
+        dnsNames: ["api.example.com"],
+        issuerRef: issuer.issuerRef,
+      },
+    },
+  });
+```
+
+The add-on pins the upstream OCI chart, owns its CRDs, waits for controller,
+webhook, CA injector, and `ClusterIssuer` readiness, and scopes the generated
+Cloudflare token to exact-zone `Zone Read` plus `DNS Write`. Its token is
+separate from ExternalDNS's token by default, which keeps rotation and
+revocation independent. Passing one pre-created Redacted token to both add-ons
+intentionally couples their permissions and availability.
+
+Each application owns its requested domains, Certificate manifest, TLS Secret
+name, and Ingress/Gateway reference. cert-manager generates the private key in
+Kubernetes and owns the temporary `_acme-challenge` TXT record; issued private
+keys never enter Alchemy state. Start with `environment: "staging"`. A
+production smoke test should be an explicit, one-hostname manual deployment so
+it cannot accidentally consume production rate limits; verify the non-staging
+chain, then remove the Certificate and issuer and confirm the challenge record
+and token disappear while the Zone remains.
 
 ### Parseable observability
 

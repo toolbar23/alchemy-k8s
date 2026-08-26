@@ -31,6 +31,28 @@ export {
 } from "./cloudflare-external-dns.ts";
 
 export {
+  CERT_MANAGER_CHART,
+  CERT_MANAGER_CHART_VERSION,
+  CertManager,
+  certManagerHelmValues,
+  validateCertManagerProps,
+  type CertManagerProps,
+  type CertManagerResult,
+} from "./cert-manager.ts";
+
+export {
+  CloudflareAcmeIssuer,
+  LETSENCRYPT_PRODUCTION_URL,
+  LETSENCRYPT_STAGING_URL,
+  cloudflareAcmeIssuerManifest,
+  cloudflareAcmeIssuerName,
+  cloudflareAcmeIssuerTokenPolicies,
+  validateCloudflareAcmeIssuerProps,
+  type CloudflareAcmeIssuerProps,
+  type CloudflareAcmeIssuerResult,
+} from "./cloudflare-acme-issuer.ts";
+
+export {
   OTEL_COLLECTOR_CHART_VERSION,
   OTEL_COLLECTOR_IMAGE,
   OtelCollector,

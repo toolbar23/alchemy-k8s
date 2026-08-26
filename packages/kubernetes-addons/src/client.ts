@@ -44,6 +44,12 @@ const plurals = new Map([
   ["apps/v1/DaemonSet", "daemonsets"],
   ["apps/v1/StatefulSet", "statefulsets"],
   ["batch/v1/Job", "jobs"],
+  ["cert-manager.io/v1/ClusterIssuer", "clusterissuers"],
+]);
+
+const clusterScopedKinds = new Set([
+  "CustomResourceDefinition",
+  "ClusterIssuer",
 ]);
 
 export const objectPath = (object: KubernetesObjectRef): string => {
@@ -55,10 +61,9 @@ export const objectPath = (object: KubernetesObjectRef): string => {
   }
   const root =
     object.apiVersion === "v1" ? "/api/v1" : `/apis/${object.apiVersion}`;
-  const namespace =
-    object.kind === "CustomResourceDefinition"
-      ? ""
-      : `/namespaces/${encodeURIComponent(object.namespace ?? "default")}`;
+  const namespace = clusterScopedKinds.has(object.kind)
+    ? ""
+    : `/namespaces/${encodeURIComponent(object.namespace ?? "default")}`;
   return `${root}${namespace}/${plural}/${encodeURIComponent(object.name)}`;
 };
 
@@ -197,6 +202,7 @@ const conditionSummary = (conditions: Condition[]): string =>
         "FailureTarget",
         "SuccessCriteriaMet",
         "Suspended",
+        "Ready",
       ].includes(type ?? ""),
     )
     .map(
@@ -287,6 +293,15 @@ export const kubernetesObjectReadiness = (
       detail: `conditions: ${summary}`,
     };
   }
+  if (value.kind === "ClusterIssuer") {
+    return {
+      ready: conditions.some(
+        ({ type, status }) => type === "Ready" && status === "True",
+      ),
+      terminal: false,
+      detail: `conditions: ${summary}`,
+    };
+  }
   return { ready: true, terminal: false, detail: "no readiness gate" };
 };
 
@@ -296,6 +311,7 @@ const waitedKinds = new Set([
   "DaemonSet",
   "StatefulSet",
   "Job",
+  "ClusterIssuer",
 ]);
 
 const objectLabel = (object: KubernetesObjectRef): string =>
