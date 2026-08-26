@@ -126,6 +126,37 @@ describe("Hetzner bootstrap", () => {
     expect(script).toContain("secret");
   });
 
+  it("starts agents without waiting for the external cloud controller", () => {
+    const script = buildInstallScript(
+      {
+        name: "test-worker-1",
+        role: "agent",
+        initialServer: false,
+        bootstrapRevision: 2,
+        server: { id: 2, serverId: 2, name: "worker", ipv4: "203.0.113.2" },
+        bootstrap: {
+          logicalName: "test-cp-1",
+          name: "test-cp-1",
+          role: "server",
+          serverId: 1,
+          privateIp: "10.0.0.2",
+          version: "v1.35.7+k3s1",
+          token: Redacted.make("token"),
+          server: { id: 1, serverId: 1, name: "cp", ipv4: "203.0.113.1" },
+        },
+        k3s: definition,
+        networkCidr: "10.0.0.0/16",
+        apiEndpoint: "203.0.113.3",
+        scheduleWorkloadsOnControlPlane: false,
+        etcdSnapshots: { schedule: "0 * * * *", retention: 24 },
+      },
+      "10.0.0.3",
+      "v1.35.7+k3s1",
+    );
+    expect(script).toContain("INSTALL_K3S_SKIP_START='true'");
+    expect(script).toContain("systemctl start --no-block k3s-agent");
+  });
+
   it("uses version-gated Secret encryption and parses K3s status safely", () => {
     expect(supportsSecretbox("v1.30.11+k3s1")).toBe(false);
     expect(supportsSecretbox("v1.30.12+k3s1")).toBe(true);
@@ -154,6 +185,16 @@ Active  Key Type  Name
       hashesMatch: true,
       provider: "secretbox",
     });
+    expect(
+      parseSecretsEncryptionStatus(`Encryption Status: Enabled
+Current Rotation Stage: start
+Server Encryption Hashes: All hashes match
+
+Active  Key Type           Name
+------  --------           ----
+ *      XSalsa20-POLY1305  secretboxkey
+`),
+    ).toMatchObject({ enabled: true, provider: "secretbox" });
   });
 
   it("builds a verified, resumable pre-migration snapshot checkpoint", () => {

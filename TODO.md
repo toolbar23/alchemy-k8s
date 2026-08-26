@@ -511,9 +511,9 @@ Reference:
 - [x] Test owner-ID stability across idempotent applies.
 - [x] Test distinct owner IDs for distinct logical resources.
 - [x] Test token rotation and Deployment rollout inputs.
-- [ ] Live-test record creation and update.
-- [ ] Live-test record removal under `sync`.
-- [ ] Prove a record owned by another TXT owner is untouched.
+- [x] Live-test record creation and update.
+- [x] Live-test record removal under `sync`.
+- [x] Prove a record owned by another TXT owner is untouched.
 
 ## Phase 5: cert-manager and Let's Encrypt
 

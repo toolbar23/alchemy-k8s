@@ -165,6 +165,7 @@ export const buildInstallScript = (
   const values: Record<string, string> = {
     INSTALL_K3S_VERSION: desiredVersion,
   };
+  if (props.role === "agent") values.INSTALL_K3S_SKIP_START = "true";
   if (!props.initialServer) {
     values.K3S_URL = `https://${props.bootstrap!.privateIp}:6443`;
     values.K3S_TOKEN = token!;
@@ -182,6 +183,7 @@ if [ -z "$private_interface" ]; then
   exit 1
 fi
 curl -sfL https://get.k3s.io | ${environment} sh -s - ${args} '--flannel-iface' "$private_interface"
+${props.role === "agent" ? "systemctl start --no-block k3s-agent\n" : ""}
 `;
 };
 

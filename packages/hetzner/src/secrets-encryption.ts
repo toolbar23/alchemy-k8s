@@ -63,7 +63,7 @@ export const parseSecretsEncryptionStatus = (
   }
   const stage = /Current Rotation Stage:\s*([^\s]+)/i.exec(output)?.[1];
   const hashes = /Server Encryption Hashes:\s*([^\n]+)/i.exec(output)?.[1];
-  const activeKeyType = /^\s*\*\s+(\S+)/m.exec(output)?.[1]?.toLowerCase();
+  const activeKey = /^\s*\*\s+(.+)$/m.exec(output)?.[1]?.toLowerCase();
   return {
     enabled: status[1]?.toLowerCase() === "enabled",
     noConfiguration: /no configuration file found/i.test(status[2] ?? ""),
@@ -71,12 +71,12 @@ export const parseSecretsEncryptionStatus = (
     hashesMatch:
       hashes === undefined ? undefined : /all hashes match/i.test(hashes),
     provider:
-      activeKeyType === undefined
+      activeKey === undefined
         ? undefined
-        : activeKeyType.includes("secretbox")
+        : activeKey.includes("secretbox") ||
+            activeKey.includes("xsalsa20-poly1305")
           ? "secretbox"
-          : activeKeyType.includes("aes-cbc") ||
-              activeKeyType.includes("aescbc")
+          : activeKey.includes("aes-cbc") || activeKey.includes("aescbc")
             ? "aescbc"
             : undefined,
   };

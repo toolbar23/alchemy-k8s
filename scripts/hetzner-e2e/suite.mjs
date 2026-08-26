@@ -513,7 +513,7 @@ spec:
       if (
         !/Encryption Status:\s*Enabled/i.test(logs.stdout) ||
         !/Server Encryption Hashes:\s*All hashes match/i.test(logs.stdout) ||
-        !/^\s*\*\s+secretbox\b/im.test(logs.stdout)
+        !/^\s*\*\s+(?:secretbox|xsalsa20-poly1305)\b/im.test(logs.stdout)
       ) {
         throw new Error(
           `K3s Secret encryption verification failed on ${node.metadata.name}`,
