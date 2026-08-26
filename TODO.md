@@ -4,11 +4,11 @@ Build an opinionated K3s core with cluster-agnostic DNS, certificate, and
 observability add-ons:
 
 ```text
-alchemy-grafana
-  └─ Grafana Cloud OTLP destination
-       └─ Alchemy.Telemetry.OtlpOptions
+alchemy-s3-access
+  └─ provider-neutral bucket credentials
 
 alchemy-kubernetes-addons
+  ├─ Parseable (S3 backend + bundled UI + optional Ingress)
   ├─ OtelCollector
   ├─ CloudflareExternalDns
   ├─ CertManager
@@ -63,44 +63,59 @@ const letsEncrypt =
     environment: "production",
   });
 
-const grafana =
+const parseable =
   yield *
-  Grafana.OtlpDestination("Telemetry", {
-    stackSlug: "example-production",
-    otlpInstanceId: config.grafanaOtlpInstanceId,
-    signals: ["traces", "logs", "metrics"],
+  KubernetesAddons.Parseable("Observability", {
+    cluster,
+    storage: observabilityBucket,
+    staging: {
+      size: "5Gi",
+      storageClass: "hcloud-volumes",
+    },
+    ingress: {
+      host: "observe.example.com",
+      className: "traefik",
+      tlsSecretName: "observe-tls",
+    },
   });
 
 const collector =
   yield *
   KubernetesAddons.OtelCollector("TelemetryGateway", {
     cluster,
-    destination: grafana.otlp,
+    destination: {
+      endpoints: parseable.endpoints,
+      credentialsSecretRef: parseable.credentialsSecretRef,
+      authentication: "basic",
+    },
   });
 ```
 
-Applications can use Grafana directly:
+Applications send to the in-cluster collector, not directly to Parseable's
+admin-authenticated endpoint:
 
 ```ts
 vars: {
-  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: grafana.otelTracesEndpoint,
-  OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: grafana.otelLogsEndpoint,
-  OTEL_EXPORTER_OTLP_HEADERS: grafana.otelHeadersEnv,
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: collector.otelTracesEndpoint,
+  OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: collector.otelLogsEndpoint,
 }
 ```
 
 Effect applications should use Alchemy's existing generic abstraction:
 
 ```ts
-Effect.provide(Alchemy.Telemetry.layerOtlp(grafana.otlp));
+Effect.provide(Alchemy.Telemetry.layerOtlp(collector.otlp));
 ```
 
 Do not add another generic OTEL interface. `Alchemy.Telemetry.OtlpOptions`
-already accepts endpoint Inputs and Redacted header Inputs.
+already accepts endpoint Inputs and Redacted header Inputs. Parseable exposes
+the endpoint portion plus a Kubernetes Secret reference; the collector adapter
+mounts the Secret and supplies Basic authentication without distributing the
+admin password to applications.
 
 ## Phase 0: security and Kubernetes prerequisites
 
-These tasks must be complete before Cloudflare or Grafana credentials are put
+These tasks must be complete before Cloudflare or Parseable credentials are put
 into Kubernetes.
 
 ### 0.1 First-class `KubernetesAddons.Secret`
@@ -206,7 +221,7 @@ Reference: [K3s secrets encryption](https://docs.k3s.io/cli/secrets-encrypt).
 - [x] Document encrypted remote Alchemy state as a production requirement.
 - [x] Add a production preflight warning when a stack uses an obviously local or
       unencrypted state configuration.
-- [x] Document that Cloudflare, Grafana, K3s, SSH, and backup credentials are
+- [x] Document that Cloudflare, Parseable, K3s, SSH, and backup credentials are
       necessarily persisted as Redacted state inputs.
 - [x] Do not implement custom state encryption in this repository.
 
@@ -265,107 +280,102 @@ a separate retained stack so cluster destruction cannot delete its backups.
       represent: safe Secret ownership and dependent readiness gates.
 - [x] Add build, type-check, test, and package-content checks.
 
-### 1.3 `alchemy-grafana`
+### 1.3 Observability backend pivot
 
-- [x] Add `packages/grafana` to the root workspaces.
-- [x] Make it independently publishable as `alchemy-grafana`.
-- [x] Export a credential provider for `GRAFANA_CLOUD_ACCESS_TOKEN` and
-      `GRAFANA_CLOUD_ORG_SLUG`, keeping the token Redacted.
-- [x] Defer the provider collection until Phase 2 adds the first Grafana
-      resource; an empty collection would be inert scaffolding.
-- [x] Keep stack lookup, access policies, tokens, connectivity discovery, and
-      OTLP composition in Phase 2.
-- [x] Add build, type-check, test, and package-content checks.
+- [x] Evaluate the Grafana Cloud scaffold against self-hosted object-storage
+      backends.
+- [x] Select Parseable OSS so committed telemetry lives in S3 instead of a local
+      stateful database.
+- [x] Remove the unused `alchemy-grafana` scaffold before it becomes a public
+      compatibility commitment.
+- [x] Keep Parseable in `alchemy-kubernetes-addons`; it consumes only
+      `Kubernetes.ClusterLike` and `S3BucketAccess`.
 
-Do not initially add stack creation, dashboards, alerts, users, teams, service
-accounts, or self-hosted Loki/Tempo/Mimir.
+## Phase 2: Parseable observability add-on
 
-## Phase 2: Grafana Cloud OTLP provider
+### 2.1 OSS topology and storage
 
-### 2.1 Authentication
+- [x] Implement `KubernetesAddons.Parseable` as a composition over existing
+      Alchemy resources rather than a new provider or Alchemy core patch.
+- [x] Deploy the OSS standalone/unified topology whose container includes the
+      web UI; do not enable the Enterprise-only distributed Prism component.
+- [x] Pin Parseable Helm chart `3.2.1` and image
+      `quay.io/parseablehq/parseable:v3.1.0`.
+- [x] Require provider-neutral `S3BucketAccess` and configure `s3-store`.
+- [x] Keep a persistent 5 GiB staging PVC by default and allow size and storage
+      class overrides.
+- [x] Pass `forcePathStyle` as `P_S3_PATH_STYLE`.
+- [x] Reject unsupported S3 session tokens instead of silently ignoring them.
+- [x] Disable update checks and anonymous usage reporting.
 
-- [x] Support `GRAFANA_CLOUD_ACCESS_TOKEN`.
-- [x] Support `GRAFANA_CLOUD_ORG_SLUG`.
-- [ ] Integrate with Alchemy's normal profile and provider flow.
-- [ ] Validate that the deployment credential can read the selected stack and
-      its connectivity information.
-- [ ] Validate that it can manage stack-scoped access policies and tokens.
-- [ ] Return actionable permission errors without echoing credentials.
+### 2.2 Secret and lifecycle safety
 
-### 2.2 Provider resources
+- [x] Create the Namespace before the write-only Secret and Helm release.
+- [x] Generate a stable Redacted admin password with Alchemy `Random` when the
+      caller does not supply one.
+- [x] Keep all admin and S3 credentials out of manifests and Helm values.
+- [x] Put only the existing Secret name into Helm values.
+- [x] Use the Secret resource version as a non-secret pod annotation so
+      credential rotation rolls the StatefulSet.
+- [x] Return the Redacted admin credential for operators and a Secret reference
+      for the future in-cluster collector.
+- [x] Do not expose a directly consumable OTLP object containing the Parseable
+      admin password.
 
-- [ ] Implement `Grafana.AccessPolicy`.
-- [ ] Implement `Grafana.AccessPolicyToken`.
-- [ ] Return `AccessPolicyToken.value` as `Redacted<string>`.
-- [ ] Update access-policy scope changes in place.
-- [ ] Replace policies when region, realm, or owning stack changes.
-- [ ] Replace tokens when their identity changes.
-- [ ] Delete a token before deleting its access policy.
-- [ ] Require explicit adoption of existing access policies.
-- [ ] Refuse token adoption without a separately supplied plaintext token.
-- [ ] Replace tokens whose plaintext was lost rather than pretending they can be
-      read from Grafana.
-- [ ] Handle Grafana API pagination when finding policies and tokens.
-- [ ] Add bounded retries and timeouts for Grafana API operations.
+### 2.3 OTLP outputs and optional Ingress
 
-### 2.3 `Grafana.OtlpDestination`
-
-- [ ] Implement `Grafana.OtlpDestination` as a composite over an access policy
-      and token.
-- [ ] Discover stack ID, region, and OTLP HTTP URL from the stack slug.
-- [ ] Require the OTLP instance ID used as the Basic-auth username.
-- [ ] Create a stack-scoped access policy containing only requested write
-      scopes.
-- [ ] Allow optional token expiration.
-- [ ] Allow optional source CIDR restrictions.
-- [ ] Build the Basic authorization header as a Redacted output.
-- [ ] Expose `otelEndpoint`.
-- [ ] Expose `otelTracesEndpoint`.
-- [ ] Expose `otelLogsEndpoint`.
-- [ ] Expose `otelMetricsEndpoint`.
-- [ ] Expose `otelHeaders` for `Alchemy.Telemetry.OtlpOptions`.
-- [ ] Expose Redacted `otelHeadersEnv` for standard OTEL environment variables.
-- [ ] Expose `otlp` satisfying `Alchemy.Telemetry.OtlpOptions`.
-- [ ] Handle trailing slashes without creating duplicate separators.
+- [x] Expose `otelEndpoint`, `otelTracesEndpoint`, `otelLogsEndpoint`, and
+      `otelMetricsEndpoint` using Axiom-compatible property names.
+- [x] Expose the endpoint-only portion of `Alchemy.Telemetry.OtlpOptions`.
+- [x] Keep all OTLP endpoints on the internal ClusterIP service.
+- [x] Make Ingress opt-in and create it as a separate `networking.k8s.io/v1`
+      manifest.
+- [x] Support only host, existing ingress class, and existing TLS Secret.
+- [x] Keep DNS ownership in ExternalDNS and certificate ownership in
+      cert-manager/application resources.
+- [x] Document that the same Ingress exposes the UI, ingestion, and query APIs.
 
 Target API:
 
 ```ts
-const grafana =
+const parseable =
   yield *
-  Grafana.OtlpDestination("Telemetry", {
-    stackSlug: "production",
-    otlpInstanceId: config.grafanaOtlpInstanceId,
-    signals: ["traces", "logs", "metrics"],
-    expiresAt: optionalExpiration,
-    allowedSubnets: optionalCidrs,
+  KubernetesAddons.Parseable("Observability", {
+    cluster,
+    storage: observabilityBucket,
+    staging: { size: "5Gi", storageClass: "hcloud-volumes" },
+    ingress: {
+      host: "observe.example.com",
+      className: "traefik",
+      tlsSecretName: "observe-tls",
+    },
   });
 ```
 
-References:
+### 2.4 Verification
 
-- [Grafana Cloud API](https://grafana.com/docs/grafana/latest/developer-resources/api-reference/cloud-api/)
-- [Grafana OTLP setup](https://grafana.com/docs/grafana-cloud/observe-and-act/agent-observability/configure/sdk/)
-
-### 2.4 Grafana tests
-
-- [ ] Test minimum access-policy scopes for each signal combination.
-- [ ] Test endpoint path construction.
-- [ ] Test that Basic credentials remain Redacted.
-- [ ] Test token replacement without exposing either plaintext value.
-- [ ] Test access-policy update and replacement decisions.
-- [ ] Test pagination.
-- [ ] Add a live test that creates a temporary policy and token.
-- [ ] Send one trace, log, and metric payload to Grafana.
-- [ ] Assert successful ingestion responses.
-- [ ] Delete the temporary token and policy.
-- [ ] Confirm the revoked token is rejected.
+- [x] Test exact chart and image pins.
+- [x] Test S3/path-style and staging Helm values.
+- [x] Prove that Helm values contain neither access key nor secret key.
+- [x] Test HTTP and existing-TLS-Secret Ingress manifests.
+- [x] Test unsupported session-token and unsafe-name validation.
+- [ ] Add a k3d/MinIO release-gate test that ingests logs, traces, and metrics,
+      browses them in the bundled UI, replaces the pod, and verifies S3-backed
+      recovery.
+- [ ] Verify the exact OSS feature boundary for dashboards, metrics, and PromQL
+      before documenting them as supported.
+- [ ] Replace the chart's optional dataset Helm hook with a first-class,
+      idempotent resource before offering retention policy inputs; the hook uses
+      unpinned `curlimages/curl:latest` and Alchemy does not execute Helm hooks.
 
 ## Phase 3: generic OTEL collector add-on
 
 - [ ] Implement `KubernetesAddons.OtelCollector` for any
       `Kubernetes.ClusterLike`.
-- [ ] Accept any `Alchemy.Telemetry.OtlpOptions` destination.
+- [ ] Accept endpoint options compatible with `Alchemy.Telemetry.OtlpOptions`
+      plus an optional Kubernetes credential Secret reference.
+- [ ] Compose Parseable's signal-specific `X-P-Stream` and `X-P-Log-Source`
+      headers with Basic authentication loaded from its Secret.
 - [ ] Pin the OpenTelemetry Collector Helm chart.
 - [ ] Pin the collector image version or digest.
 - [ ] Run v1 as an in-cluster gateway Deployment.
@@ -395,7 +405,11 @@ const collector =
   yield *
   KubernetesAddons.OtelCollector("Collector", {
     cluster,
-    destination: grafana.otlp,
+    destination: {
+      endpoints: parseable.endpoints,
+      credentialsSecretRef: parseable.credentialsSecretRef,
+      authentication: "basic",
+    },
   });
 ```
 
@@ -623,7 +637,7 @@ yield *
 - [ ] Show explicit Cloudflare Zone creation or adoption.
 - [ ] Show ExternalDNS.
 - [ ] Show cert-manager and Let's Encrypt.
-- [ ] Show a Grafana Cloud destination.
+- [x] Show the Parseable S3 backend and optional Ingress.
 - [ ] Show the optional OTEL collector.
 - [ ] Show an application Deployment, Service, Ingress, and Certificate.
 - [ ] Document provider registration and required deployment credentials.
@@ -637,8 +651,8 @@ yield *
 - [ ] Document the deletion behavior of ExternalDNS `sync`.
 - [ ] Document Kubernetes Secret encryption and encrypted Alchemy state as
       production requirements.
-- [ ] Explain that Grafana Cloud is the backend while the OTEL collector is a
-      transport/gateway.
+- [x] Explain that Parseable is the backend/UI while the OTEL collector is the
+      credential boundary and transport/gateway.
 - [ ] Explain that K3s metrics-server is unrelated to long-term metrics storage.
 
 ## Phase 7: validation and release gates
@@ -767,8 +781,8 @@ Automatic initial-control-plane recovery (P1):
 - [ ] Revisit external datastores only after embedded etcd is insufficient.
 - [ ] Revisit generic bootstrap hooks only after a specific extension cannot be
       represented as an add-on.
-- [ ] Revisit self-hosted Grafana, Loki, Tempo, or Mimir only when Grafana Cloud
-      is unsuitable.
+- [ ] Revisit Grafana, Loki, Tempo, or Mimir only if Parseable's concrete
+      feature or scaling limits require them.
 - [ ] Add a generic DNS-provider interface only after a second implemented DNS
       provider proves the shared shape.
 - [ ] Add a generic certificate wrapper only after repeated application code
@@ -787,14 +801,14 @@ Automatic initial-control-plane recovery (P1):
 - [ ] 6. Implement and E2E-test automatic single-control-plane recovery.
 - [ ] 7. Prove HA restore and extend recovery to HA membership reconstruction.
 - [x] 8. Scaffold `alchemy-kubernetes-addons`.
-- [x] 9. Scaffold the `alchemy-grafana` credential boundary.
-- [ ] 10. Implement the Grafana OTLP destination.
+- [x] 9. Retire the superseded `alchemy-grafana` credential scaffold.
+- [x] 10. Implement the S3-backed Parseable add-on and optional Ingress.
 - [ ] 11. Implement the OTEL collector gateway.
 - [ ] 12. Implement Cloudflare ExternalDNS.
 - [ ] 13. Implement cert-manager.
 - [ ] 14. Implement the Cloudflare ACME issuer.
 - [ ] 15. Add local integration tests.
-- [ ] 16. Run live Cloudflare, Grafana, and Let's Encrypt staging E2E.
+- [ ] 16. Run live Parseable, Cloudflare, and Let's Encrypt staging E2E.
 - [ ] 17. Add documentation and examples.
 - [x] 18. Add existing-cluster Secret-encryption migration.
 - [ ] 19. Complete the remaining P0 cluster security work.

@@ -59,3 +59,38 @@ Credentials must be referenced by Secret name/key rather than embedded in Helm
 values. Readiness errors expose object identity, status codes, replica counts,
 and condition type/status only; manifest bodies and condition text are not
 included.
+
+## Parseable
+
+`Parseable` composes a Namespace, write-only Secret, pinned upstream Helm chart,
+readiness gate, and optional Ingress. Permanent telemetry lives in the supplied
+`S3BucketAccess`; the local PVC is only the durable staging queue:
+
+```ts
+const parseable =
+  yield *
+  KubernetesAddons.Parseable("Observability", {
+    cluster,
+    storage: observabilityBucket,
+    staging: { size: "5Gi", storageClass: "hcloud-volumes" },
+    ingress: {
+      host: "observe.example.com",
+      className: "traefik",
+      tlsSecretName: "observe-tls",
+    },
+  });
+```
+
+Omit `ingress` for the safer ClusterIP-only default. The add-on does not install
+an ingress controller, manage DNS, or issue the referenced TLS Secret. The
+bundled OSS UI and the ingestion/query APIs use the same service, so an Ingress
+exposes all of them.
+
+The flat `otel*Endpoint` outputs match standard OTEL environment-variable names.
+`endpoints` implements the endpoint portion of `Alchemy.Telemetry.OtlpOptions`
+and includes the non-secret `X-P-Stream` and `X-P-Log-Source` headers. Streams
+default to `otel-logs`, `otel-traces`, and `otel-metrics` and can be renamed
+with `streams`. `credentialsSecretRef` lets an in-cluster collector mount the
+Parseable Basic credentials without putting them in Helm values. Temporary S3
+session credentials are rejected because the pinned Parseable chart does not
+support them.

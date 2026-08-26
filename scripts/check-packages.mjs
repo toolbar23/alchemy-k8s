@@ -6,7 +6,6 @@ const packages = [
   "packages/docker",
   "packages/kubernetes-addons",
   "packages/s3-access",
-  "packages/grafana",
 ];
 const versions = new Set();
 

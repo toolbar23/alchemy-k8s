@@ -44,6 +44,7 @@
   },
   "peerDependencies": {
     "alchemy": ">=2.0.0-beta.74 <3",
+    "alchemy-s3-access": ">=0.1.0-alpha.0 <1",
     "effect": ">=4.0.0-rc.110 <5"
   }
 }

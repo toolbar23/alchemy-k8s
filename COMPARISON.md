@@ -119,7 +119,7 @@ are useful even when the local implementation uses a different architecture.
 | Kubernetes composition     | Implements `Kubernetes.ClusterLike`                                                                                       | Produces kubeconfig for ordinary tooling                                                          | Local advantage inside Alchemy                                    |
 | ExternalDNS                | Planned separate add-on                                                                                                   | Not a core capability                                                                             | Separate add-on by design                                         |
 | cert-manager/Let's Encrypt | Planned separate add-ons                                                                                                  | Not a core capability                                                                             | Separate add-ons by design                                        |
-| OTEL/Grafana               | Planned provider and add-on                                                                                               | Not a core capability                                                                             | Separate provider/add-on by design                                |
+| OTEL/Parseable             | S3-backed Parseable add-on implemented; collector planned                                                                 | Not a core capability                                                                             | Separate add-on by design                                         |
 
 ## Security-critical comparison
 
@@ -484,8 +484,9 @@ Phase 0 completed the Redacted-safe `KubernetesAddons.Secret` primitive and the
 `ReadyHelmChart` composition without modifying Alchemy core. The remaining
 platform-service tasks are:
 
-1. Implement `alchemy-grafana` with an `OtlpOptions`-compatible destination.
-2. Implement the cluster-agnostic OTEL collector gateway.
+1. E2E-test the implemented S3-backed Parseable add-on and its bundled UI.
+2. Implement the cluster-agnostic OTEL collector gateway using Parseable's
+   endpoint options and Kubernetes Secret reference.
 3. Implement Cloudflare ExternalDNS with a zone-scoped token.
 4. Implement generic cert-manager and a Cloudflare DNS-01 issuer.
 5. Keep Certificate ownership with each application or ingress.
@@ -506,8 +507,8 @@ The following upstream capabilities should not be copied merely for parity:
 - A generic firewall rule DSL.
 - A generic add-on registry.
 - A generic DNS-provider interface before a second implementation exists.
-- Self-hosted Grafana, Loki, Tempo, or Mimir before Grafana Cloud is
-  insufficient.
+- Grafana, Loki, Tempo, or Mimir before Parseable has a measured feature or
+  scaling limitation.
 
 Volume encryption, gVisor, CIS hardening, and Pod Security should remain visible
 security gaps even when deferred. Documentation must not imply that private
@@ -523,7 +524,7 @@ Keep the cluster kernel responsible for:
 
 Keep higher-level services separate and accept `Kubernetes.ClusterLike`:
 
-- Grafana/OTLP destinations.
+- Parseable and other OTLP destinations.
 - OTEL collectors and later telemetry agents.
 - ExternalDNS.
 - cert-manager and provider-specific ACME issuers.

@@ -1,6 +1,6 @@
 # Alchemy K3s extensions
 
-Five experimental Alchemy extensions for self-managed K3s and composable
+Four experimental Alchemy extensions for self-managed K3s and composable
 Kubernetes services:
 
 - [`alchemy-hetzner-k3s`](packages/hetzner): Hetzner Cloud servers, private
@@ -9,12 +9,10 @@ Kubernetes services:
 - [`alchemy-docker-k3s`](packages/docker): a persistent single-node local K3s
   cluster managed through k3d.
 - [`alchemy-kubernetes-addons`](packages/kubernetes-addons): Redacted-safe
-  Kubernetes Secrets and bounded Helm workload readiness, with DNS,
-  certificates, and telemetry add-ons planned on top.
+  Kubernetes Secrets, bounded Helm workload readiness, and an S3-backed
+  Parseable observability add-on with optional Ingress.
 - [`alchemy-s3-access`](packages/s3-access): the provider-neutral, Redacted
   credential contract used to pass scoped S3-compatible bucket access.
-- [`alchemy-grafana`](packages/grafana): the Redacted Grafana Cloud deployment
-  credential boundary; API resources and OTLP discovery are the next phase.
 
 Both cluster providers return an object with a `connection` attribute and can be
 passed directly to `Kubernetes.Deployment`, `Job`, `Manifest`, or `HelmChart`.
@@ -219,7 +217,7 @@ before provider diffing and state persistence. Values are unwrapped only in the
 Kubernetes PATCH body. Reads return only connection, identity, type, UID, and
 resource version—never Secret data. Alchemy still persists the Redacted input so
 updates can be detected; Redacted hides values from plans and logs but is not
-storage encryption. Hetzner, K3s, SSH, backup, Cloudflare, and Grafana
+storage encryption. Hetzner, K3s, SSH, backup, Cloudflare, and Parseable
 credentials are therefore necessarily state inputs as those features are
 composed. Production must use an encrypted remote state backend. A
 production-like stage using `local` or `inmemory` state emits a preflight
@@ -244,6 +242,45 @@ yield *
 
 Timeout and terminal-failure errors identify the object and sanitized conditions
 without including manifests, Secret bodies, or environment values.
+
+### Parseable observability
+
+`Parseable` installs the pinned OSS standalone chart with its bundled web UI,
+keeps committed telemetry in a supplied `S3BucketAccess`, and retains a small
+persistent staging volume for acknowledged data that has not reached S3 yet. It
+creates the namespace and write-only Secret before Helm, and uses the Secret's
+resource version as a non-secret pod annotation so credential rotation rolls the
+StatefulSet:
+
+```ts
+const parseable =
+  yield *
+  KubernetesAddons.Parseable("Observability", {
+    cluster,
+    storage: observabilityBucket,
+    staging: {
+      size: "5Gi",
+      storageClass: "hcloud-volumes",
+    },
+    ingress: {
+      host: "observe.example.com",
+      className: "traefik",
+      tlsSecretName: "observe-tls",
+    },
+  });
+```
+
+Ingress is absent by default and expects an existing controller and optional TLS
+Secret. ExternalDNS owns the DNS record and cert-manager owns that Secret.
+Because the UI and APIs share one service, enabling public Ingress exposes both;
+prefer private access or an authentication proxy.
+
+The result exposes `otelEndpoint`, `otelTracesEndpoint`, `otelLogsEndpoint`, and
+`otelMetricsEndpoint` for Axiom-shaped composition. Parseable OSS authenticates
+these endpoints with its admin Basic credentials, so applications should send to
+the planned in-cluster OTEL collector. The collector will mount
+`credentialsSecretRef`; do not distribute `parseable.admin.password` to
+workloads.
 
 The topology and defaults are informed by
 [`vitobotta/hetzner-k3s`](https://github.com/vitobotta/hetzner-k3s): private

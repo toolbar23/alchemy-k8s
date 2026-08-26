@@ -1,4 +1,5 @@
 import {
+  RandomProvider,
   Resource,
   isResolved,
   type Input,
@@ -20,6 +21,17 @@ import {
   waitForObjectsReady,
   type KubernetesObjectRef,
 } from "./client.ts";
+
+export {
+  PARSEABLE_CHART_VERSION,
+  PARSEABLE_IMAGE,
+  Parseable,
+  type ParseableIngressProps,
+  type ParseableOtlpEndpoints,
+  type ParseableProps,
+  type ParseableResult,
+  type ParseableStagingProps,
+} from "./parseable.ts";
 
 export {
   kubernetesObjectReadiness,
@@ -351,4 +363,5 @@ export const ReadyHelmChart = (id: string, props: ReadyHelmChartProps) =>
 export const providers = () =>
   Layer.effect(Providers, Provider.collection([Secret, Readiness])).pipe(
     Layer.provide(Layer.mergeAll(SecretProvider(), ReadinessProvider())),
+    Layer.provideMerge(RandomProvider()),
   );

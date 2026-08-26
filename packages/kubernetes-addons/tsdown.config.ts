@@ -6,6 +6,10 @@ export default defineConfig({
   dts: true,
   clean: true,
   deps: {
-    neverBundle: [/^alchemy(?:\/.*)?$/, /^effect(?:\/.*)?$/],
+    neverBundle: [
+      /^alchemy(?:\/.*)?$/,
+      /^alchemy-s3-access$/,
+      /^effect(?:\/.*)?$/,
+    ],
   },
 });
