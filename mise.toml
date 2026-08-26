@@ -7,7 +7,7 @@ description = "Bootstrap every unpublished npm workspace with interactive 2FA"
 run = [
   "npm whoami",
   "npm ci",
-  "npm run check",
+  "npm run release:check",
   "node scripts/publish-packages.mjs",
 ]
 
@@ -15,6 +15,6 @@ run = [
 description = "Build and preview every npm workspace without publishing"
 run = [
   "npm ci",
-  "npm run check",
+  "npm run release:check",
   "node scripts/publish-packages.mjs --dry-run",
 ]

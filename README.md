@@ -505,7 +505,34 @@ does not emulate EKS image builds, registries, or workload identity.
 
 ```sh
 npm ci
-npm run check
+npm run release:check
+```
+
+The release check runs type, lint, unit, build, package-content, dependency
+audit, and pinned Helm-render checks. A reusable live smoke stack exercises the
+write-only Secret and OTLP gateway against either local k3d or Hetzner K3s:
+
+```sh
+ADDONS_E2E_KUBECONFIG=/path/to/kubeconfig \
+ADDONS_E2E_TARGET=docker \
+ADDONS_E2E_SECRET="$(openssl rand -hex 32)" \
+alchemy deploy scripts/addons-e2e.run.mjs --stage docker --yes
+```
+
+Run the same deploy again to check idempotence, change only `ADDONS_E2E_SECRET`
+to check Secret rotation and collector rollout, then run `alchemy destroy` with
+the same file and stage. Use a fresh random value and do not echo it; the value
+is intentionally absent from stack output and plans.
+
+Set `ADDONS_E2E_REMOTE_STATE=true` to run the same lifecycle against the
+encrypted Cloudflare state store created by `alchemy cloudflare bootstrap`.
+
+The live Cloudflare security gate creates a temporary exact-zone token with only
+`Zone Read`, proves that DNS writes receive HTTP 403, and always attempts exact
+record and token cleanup while preserving every cleanup error:
+
+```sh
+npm run e2e:cloudflare:permissions -- /path/to/cloudflare.env
 ```
 
 The repository pins npm 12 for local development, CI, and publishing. Dependency

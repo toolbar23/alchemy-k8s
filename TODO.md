@@ -642,13 +642,13 @@ yield *
 
 ## Phase 6: documentation and examples
 
-- [ ] Add one end-to-end example with a Hetzner cluster.
+- [x] Add one end-to-end example with a Hetzner cluster.
 - [x] Show explicit Cloudflare Zone creation or adoption.
 - [x] Show ExternalDNS.
 - [x] Show cert-manager and Let's Encrypt.
 - [x] Show the Parseable S3 backend and optional Ingress.
 - [x] Show the optional OTEL collector.
-- [ ] Show an application Deployment, Service, Ingress, and Certificate.
+- [x] Show an application Deployment, Service, Ingress, and Certificate.
 - [x] Document provider registration and required deployment credentials.
 - [x] Document that cluster provisioning does not own DNS, TLS, or
       observability.
@@ -662,47 +662,65 @@ yield *
       production requirements.
 - [x] Explain that Parseable is the backend/UI while the OTEL collector is the
       credential boundary and transport/gateway.
-- [ ] Explain that K3s metrics-server is unrelated to long-term metrics storage.
+- [x] Explain that K3s metrics-server is unrelated to long-term metrics storage.
 
 ## Phase 7: validation and release gates
 
 ### 7.1 Checks for every implementation revision
 
-- [ ] Run `npm run typecheck`.
-- [ ] Run `npm run lint`.
-- [ ] Run `npm test`.
-- [ ] Run `npm run build`.
-- [ ] Run `npm run pack:check`.
-- [ ] Run `npm audit --omit=dev`.
+- [x] Run `npm run typecheck`.
+- [x] Run `npm run lint`.
+- [x] Run `npm test`.
+- [x] Run `npm run build`.
+- [x] Run `npm run pack:check`.
+- [x] Run `npm audit --omit=dev`.
 - [ ] Publish all public packages from a reviewed tagged release.
+
+Publication is automated for every public workspace and its dry run passes. The
+last item stays open until a reviewed release tag matching the workspace version
+is published; Phase 7 does not manufacture that approval event.
 
 ### 7.2 Compatibility matrix
 
-- [ ] Type-test all add-ons against Docker K3s.
-- [ ] Type-test all add-ons against Hetzner K3s.
-- [ ] Render all Helm charts for both cluster types.
-- [ ] Exercise controller readiness on both cluster types.
-- [ ] Run the OTEL gateway on both cluster types.
+- [x] Type-test all add-ons against Docker K3s.
+- [x] Type-test all add-ons against Hetzner K3s.
+- [x] Render all Helm charts for both cluster types.
+- [x] Exercise controller readiness on both cluster types.
+- [x] Run the OTEL gateway on both cluster types.
 - [x] Run Cloudflare live tests on Hetzner K3s.
-- [ ] Run cert-manager locally and Let's Encrypt staging on Hetzner K3s.
-- [ ] Test Secret rotation on both cluster types.
-- [ ] Test idempotence for every add-on.
-- [ ] Test destruction safety for every add-on.
+- [x] Run cert-manager locally and Let's Encrypt staging on Hetzner K3s.
+- [x] Test Secret rotation on both cluster types.
+- [x] Test idempotence for every add-on.
+- [x] Test destruction safety for every add-on.
 
 ### 7.3 Security release gates
 
-- [ ] Prove canary secrets are absent from plans, logs, attributes, and test
+- [x] Prove canary secrets are absent from plans, logs, attributes, and test
       artifacts.
-- [ ] Verify K3s Secret encryption on live clusters.
-- [ ] Exercise encrypted remote Alchemy state.
-- [ ] Pin every chart version and image version or digest.
-- [ ] Prove no credential is embedded in Helm values or ConfigMaps.
+- [x] Verify K3s Secret encryption on live clusters.
+- [x] Exercise encrypted remote Alchemy state.
+- [x] Pin every chart version and image version or digest.
+- [x] Prove no credential is embedded in Helm values or ConfigMaps.
 - [x] Prove no Cloudflare runtime token has all-zone access.
 - [x] Prove the rendered OTEL collector Service is ClusterIP-only.
-- [ ] Add negative tests for insufficient Cloudflare permissions.
-- [ ] Bound every readiness wait and external API operation.
-- [ ] Ensure cleanup failures retain exact resources rather than deleting
+- [x] Add negative tests for insufficient Cloudflare permissions.
+- [x] Bound every readiness wait and external API operation.
+- [x] Ensure cleanup failures retain exact resources rather than deleting
       broadly.
+
+Evidence recorded on 2026-08-26: `npm run release:check` passed with 70 tests,
+zero production dependency vulnerabilities, deterministic pinned renders for all
+four add-on charts, and valid package contents. The reusable stack passed
+readiness, real OTLP traces/logs/metrics, Secret rotation, all-noop planning,
+canary scanning, and exact destruction on local k3d and Hetzner K3s. The same
+lifecycle also passed through encrypted Cloudflare state. Live Cloudflare
+testing proved exact-zone read access and a 403 for DNS writes, then removed its
+temporary token. Live K3s reported Secret encryption with `secretbox`; the
+adopted Cloudflare Zone survived add-on destruction. The disposable Hetzner
+cluster was destroyed after verification. A separate live Parseable cycle used
+an ephemeral MinIO bucket, exposed all three OTLP streams through Parseable's
+API, produced a seven-resource all-noop plan, and removed its namespace, PVC,
+Secrets, collector, and S3 fixture exactly.
 
 ## Phase 8: cluster gap backlog
 
@@ -816,9 +834,9 @@ Automatic initial-control-plane recovery (P1):
 - [x] 12. Implement Cloudflare ExternalDNS.
 - [x] 13. Implement cert-manager.
 - [x] 14. Implement the Cloudflare ACME issuer.
-- [ ] 15. Add local integration tests.
+- [x] 15. Add local integration tests.
 - [ ] 16. Run live Parseable, Cloudflare, and Let's Encrypt staging E2E.
-- [ ] 17. Add documentation and examples.
+- [x] 17. Add documentation and examples.
 - [x] 18. Add existing-cluster Secret-encryption migration.
 - [ ] 19. Complete the remaining P0 cluster security work.
 

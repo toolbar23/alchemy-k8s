@@ -28,6 +28,8 @@
     "format:check": "prettier --check .",
     "lint": "eslint . && npm run format:check",
     "pack:check": "node scripts/check-packages.mjs",
+    "release:check": "npm run check && npm audit --omit=dev && npm run render:charts",
+    "render:charts": "npm run build --prefix packages/kubernetes-addons && node scripts/render-addon-charts.mjs",
     "postinstall": "patch-package",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
@@ -41,6 +43,7 @@
     "e2e:hetzner:replace": "node scripts/hetzner-e2e/replace.mjs",
     "e2e:hetzner:upgrade": "node scripts/hetzner-e2e/upgrade.mjs",
     "e2e:hetzner:protection": "node scripts/hetzner-e2e/protection.mjs",
+    "e2e:cloudflare:permissions": "node scripts/cloudflare-permission-negative.mjs",
     "e2e:hetzner:all": "node scripts/hetzner-e2e/all.mjs",
     "e2e:hetzner:destroy": "node scripts/hetzner-e2e/destroy.mjs"
   },

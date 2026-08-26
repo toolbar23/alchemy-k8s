@@ -13,8 +13,7 @@ import {
   type ParseableProps,
 } from "../src/parseable.ts";
 
-const acceptsCluster = (_cluster: ParseableProps["cluster"]): void =>
-  undefined;
+const acceptsCluster = (_cluster: ParseableProps["cluster"]): void => undefined;
 const compileClusterTypes = (
   hetzner: HetznerCluster,
   docker: DockerCluster,

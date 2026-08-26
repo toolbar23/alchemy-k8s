@@ -34,7 +34,7 @@ A/AAAA/CNAME records and registry TXT records. cert-manager owns only temporary
 S3-backed telemetry service, while the optional collector is the in-cluster
 credential and transport boundary.
 
-K3s metrics-server is unrelated to this telemetry stack. It keeps a short
-window of CPU and memory resource metrics for `kubectl top` and autoscaling; it
-is not a durable metrics database, OTLP receiver, log store, trace store, or
-dashboard backend.
+K3s metrics-server is unrelated to this telemetry stack. It keeps a short window
+of CPU and memory resource metrics for `kubectl top` and autoscaling; it is not
+a durable metrics database, OTLP receiver, log store, trace store, or dashboard
+backend.

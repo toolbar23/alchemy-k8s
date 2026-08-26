@@ -60,9 +60,9 @@ export default Alchemy.Stack(
       protectAgainstDeletion: true,
     });
 
-    const zone = yield* Cloudflare.Zone.Zone("PublicZone", { name: domain }).pipe(
-      adopt(true),
-    );
+    const zone = yield* Cloudflare.Zone.Zone("PublicZone", {
+      name: domain,
+    }).pipe(adopt(true));
     yield* KubernetesAddons.CloudflareExternalDns("PublicDns", {
       cluster,
       zone,
@@ -73,21 +73,17 @@ export default Alchemy.Stack(
     const certManager = yield* KubernetesAddons.CertManager("Certificates", {
       cluster,
     });
-    const issuer = yield* KubernetesAddons.CloudflareAcmeIssuer(
-      "LetsEncrypt",
-      {
-        cluster,
-        certManager,
-        zone,
-        email: acmeEmail,
-        // Prove the stack with staging before changing this to production.
-        environment: "staging",
-      },
-    );
+    const issuer = yield* KubernetesAddons.CloudflareAcmeIssuer("LetsEncrypt", {
+      cluster,
+      certManager,
+      zone,
+      email: acmeEmail,
+      // Prove the stack with staging before changing this to production.
+      environment: "staging",
+    });
 
     let observabilityIngress:
-      | { host: string; className: string; tlsSecretName: string }
-      | undefined;
+      { host: string; className: string; tlsSecretName: string } | undefined;
     if (exposeObservability) {
       const host = `observe.${domain}`;
       const namespace = yield* Kubernetes.Manifest(
