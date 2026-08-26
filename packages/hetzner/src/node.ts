@@ -15,10 +15,19 @@ import {
 import {
   k3sVersion,
   remotePrivateIp,
+  resolveServerAccess,
   ssh,
   sshScript,
+  waitForCloudInit,
   waitForSsh,
 } from "./remote.ts";
+import {
+  assertSafeRestoreVersion,
+  buildRecoveryScript,
+  k3sS3Arguments,
+  listRemoteEtcdSnapshots,
+  selectRecoverySnapshot,
+} from "./recovery.ts";
 import type {
   NodeProps,
   NodeReference,
@@ -27,6 +36,10 @@ import type {
 } from "./types.ts";
 
 export const Node = Resource<NodeResource>("Hetzner.K3s.Node");
+
+export const K3S_INSTALL_COMMIT = "33c19246e5c14cac5a4d839b2b8d5773f7173f46";
+export const K3S_INSTALL_SHA256 =
+  "ed01f89fd977bf20ac1516bbebf8370bf3ddbaa55dac8aba610956a4c78cc00b";
 
 const secretValue = (value: Redacted.Redacted<string>): string =>
   Redacted.value(value);
@@ -86,6 +99,8 @@ const installArguments = (
       props.etcdSnapshots.schedule,
       "--etcd-snapshot-retention",
       String(props.etcdSnapshots.retention),
+      "--flannel-backend",
+      props.k3s.flannelBackend,
     );
     if (!props.k3s.addons.traefik) args.push("--disable", "traefik");
     if (!props.k3s.addons.metricsServer)
@@ -120,28 +135,30 @@ const installArguments = (
     if (props.server.ipv4 !== undefined) {
       args.push("--tls-san", props.server.ipv4);
     }
+    if (props.apiAuditLog.enabled) {
+      args.push(
+        "--kube-apiserver-arg",
+        "audit-policy-file=/etc/rancher/k3s/audit-policy.yaml",
+        "--kube-apiserver-arg",
+        "audit-log-path=/var/lib/rancher/k3s/server/logs/audit.log",
+        "--kube-apiserver-arg",
+        `audit-log-maxage=${props.apiAuditLog.maximumAgeDays}`,
+        "--kube-apiserver-arg",
+        `audit-log-maxbackup=${props.apiAuditLog.maximumBackups}`,
+        "--kube-apiserver-arg",
+        `audit-log-maxsize=${props.apiAuditLog.maximumSizeMegabytes}`,
+      );
+    }
   }
   const backup = props.etcdSnapshots.s3;
   if (props.role === "server" && backup !== undefined) {
     args.push(
-      "--etcd-s3",
-      "--etcd-s3-endpoint",
-      backup.endpoint,
-      "--etcd-s3-region",
-      backup.region,
-      "--etcd-s3-bucket",
-      backup.bucket,
-      "--etcd-s3-access-key",
-      secretValue(backup.accessKey),
-      "--etcd-s3-secret-key",
-      secretValue(backup.secretKey),
-      "--etcd-s3-retention",
-      String(props.etcdSnapshots.retention),
+      ...k3sS3Arguments(
+        backup,
+        props.etcdSnapshots.folder,
+        props.etcdSnapshots.retention,
+      ),
     );
-    if (backup.folder !== undefined)
-      args.push("--etcd-s3-folder", backup.folder);
-    if (backup.forcePathStyle)
-      args.push("--etcd-s3-bucket-lookup-type", "path");
   }
   for (const [key, value] of Object.entries(props.labels ?? {})) {
     args.push("--node-label", `${key}=${value}`);
@@ -157,6 +174,7 @@ export const buildInstallScript = (
   props: NodeProps,
   privateIp: string,
   desiredVersion: string,
+  skipStart = false,
 ): string => {
   const token =
     props.bootstrap?.token === undefined
@@ -165,7 +183,8 @@ export const buildInstallScript = (
   const values: Record<string, string> = {
     INSTALL_K3S_VERSION: desiredVersion,
   };
-  if (props.role === "agent") values.INSTALL_K3S_SKIP_START = "true";
+  if (props.role === "agent" || skipStart)
+    values.INSTALL_K3S_SKIP_START = "true";
   if (!props.initialServer) {
     values.K3S_URL = `https://${props.bootstrap!.privateIp}:6443`;
     values.K3S_TOKEN = token!;
@@ -177,13 +196,38 @@ export const buildInstallScript = (
     .map(shellQuote)
     .join(" ");
   return `set -euo pipefail
-private_interface=$(ip -o -4 addr show | awk -v address=${shellQuote(privateIp)} 'index($4, address "/") == 1 { print $2; exit }')
+${
+  props.role === "server" && props.apiAuditLog.enabled
+    ? `install -d -m 0700 /etc/rancher/k3s /var/lib/rancher/k3s/server/logs
+cat > /etc/rancher/k3s/audit-policy.yaml <<'ALCHEMY_AUDIT_POLICY'
+apiVersion: audit.k8s.io/v1
+kind: Policy
+omitStages: ["RequestReceived"]
+rules:
+  - level: None
+    users: ["system:kube-proxy"]
+    verbs: ["watch"]
+  - level: None
+    resources:
+      - group: ""
+        resources: ["events"]
+  - level: Metadata
+ALCHEMY_AUDIT_POLICY
+`
+    : ""
+}private_interface=$(ip -o -4 addr show | awk -v address=${shellQuote(privateIp)} 'index($4, address "/") == 1 { print $2; exit }')
 if [ -z "$private_interface" ]; then
   echo "Unable to find the interface for private IP ${privateIp}" >&2
   exit 1
 fi
-curl -sfL https://get.k3s.io | ${environment} sh -s - ${args} '--flannel-iface' "$private_interface"
-${props.role === "agent" ? "systemctl start --no-block k3s-agent\n" : ""}
+install_script=$(mktemp)
+trap 'rm -f "$install_script"' EXIT
+curl --fail --silent --show-error --location --retry 3 --connect-timeout 10 --max-time 120 \
+  ${shellQuote(`https://raw.githubusercontent.com/k3s-io/k3s/${K3S_INSTALL_COMMIT}/install.sh`)} \
+  -o "$install_script"
+printf '%s  %s\n' ${shellQuote(K3S_INSTALL_SHA256)} "$install_script" | sha256sum --check --status
+${environment} sh "$install_script" ${args} '--flannel-iface' "$private_interface"
+${props.role === "agent" && !skipStart ? "systemctl restart --no-block k3s-agent\n" : ""}
 `;
 };
 
@@ -224,12 +268,24 @@ const drainNode = async (
 const observe = async (
   props: NodeProps,
 ): Promise<NodeReference | undefined> => {
-  const version = await k3sVersion(props.server);
+  const server = await resolveServerAccess(
+    props.server,
+    props.networkCidr,
+    props.hcloudToken,
+    props.privateManagement,
+  );
+  const version = await k3sVersion(server);
   if (version === undefined) return undefined;
-  const privateIp = await remotePrivateIp(props.server, props.networkCidr);
+  const privateIp = await remotePrivateIp(server, props.networkCidr);
   const token = props.initialServer
     ? Redacted.make(
-        await ssh(props.server, "cat /var/lib/rancher/k3s/server/node-token"),
+        await ssh(server, "cat /var/lib/rancher/k3s/server/node-token"),
+      )
+    : undefined;
+  const clusterId = props.initialServer
+    ? await ssh(
+        server,
+        "k3s kubectl get namespace kube-system -o jsonpath='{.metadata.uid}'",
       )
     : undefined;
   return {
@@ -240,7 +296,8 @@ const observe = async (
     privateIp,
     version,
     ...(token === undefined ? {} : { token }),
-    server: props.server,
+    ...(clusterId === undefined ? {} : { clusterId }),
+    server,
   };
 };
 
@@ -265,9 +322,38 @@ export const NodeProvider = () => {
   const limitReconcile = createNodeReconcileLimiter();
   return Provider.succeed(Node, {
     stables: ["logicalName", "role"],
-    read: ({ olds }) =>
+    read: ({ olds, output }) =>
       Effect.tryPromise({
-        try: () => observe(olds),
+        try: async () => {
+          let observed: NodeReference | undefined;
+          try {
+            observed = await observe(olds);
+          } catch (error) {
+            // Pre-hardening state has no pinned host key, so it cannot be
+            // inspected safely. Preserve that state just long enough for the
+            // create-first server replacement to reconcile every legacy node.
+            if (
+              output !== undefined &&
+              (olds.initialServer || olds.server.hostPublicKey === undefined)
+            ) {
+              return output;
+            }
+            throw error;
+          }
+          // The persisted initial token and cluster ID are the recovery root.
+          // Never reinterpret an unreachable old control plane as greenfield.
+          if (observed === undefined && olds.initialServer) return output;
+          if (observed === undefined) return undefined;
+          return {
+            ...observed,
+            ...(output?.obsoleteNodeName === undefined
+              ? {}
+              : { obsoleteNodeName: output.obsoleteNodeName }),
+            ...(output?.recovery === undefined
+              ? {}
+              : { recovery: output.recovery }),
+          };
+        },
         catch: (cause) =>
           new Error(`Unable to inspect K3s node ${olds.name}`, { cause }),
       }),
@@ -298,29 +384,53 @@ export const NodeProvider = () => {
           }
           const replacingServer =
             output !== undefined && output.serverId !== news.server.serverId;
-          if (replacingServer && news.initialServer) {
-            throw new Error(
-              "Replacing the initial control-plane server is not supported in v1; create a new cluster or restore a snapshot",
-            );
+          const restoringInitial = replacingServer && news.initialServer;
+          if (restoringInitial) {
+            assertSameMinor(output.version, desiredVersion);
+            if (
+              news.recovery?.restoreOnInitialControlPlaneReplacement !== true
+            ) {
+              throw new Error(
+                "Replacing the initial control-plane server requires recovery.restoreOnInitialControlPlaneReplacement",
+              );
+            }
+            if (news.stateId !== "postgres") {
+              throw new Error(
+                `Automatic recovery requires Alchemy's locked Postgres state backend; received ${JSON.stringify(news.stateId)}`,
+              );
+            }
+            if (
+              output?.token === undefined ||
+              news.etcdSnapshots.s3 === undefined
+            ) {
+              throw new Error(
+                "Automatic recovery requires the original server token and S3 snapshot access in encrypted state",
+              );
+            }
+            assertSafeRestoreVersion(desiredVersion);
           }
-          await waitForSsh(news.server);
+          const server = await resolveServerAccess(
+            news.server,
+            news.networkCidr,
+            news.hcloudToken,
+            news.privateManagement,
+          );
+          await waitForSsh(server);
+          await waitForCloudInit(server);
           if (
             news.initialServer &&
             olds !== undefined &&
             olds.k3s.channel !== news.k3s.channel
           ) {
             await ssh(
-              news.server,
+              server,
               "k3s kubectl delete plan -n system-upgrade k3s-agent k3s-server --ignore-not-found",
             );
           }
-          const privateIp = await remotePrivateIp(
-            news.server,
-            news.networkCidr,
-          );
+          const privateIp = await remotePrivateIp(server, news.networkCidr);
           const desiredName = nodeName(news.name, news.server.serverId);
-          const effectiveNews = { ...news, name: desiredName };
-          const installedVersion = await k3sVersion(news.server);
+          const effectiveNews = { ...news, name: desiredName, server };
+          const installedVersion = await k3sVersion(server);
           if (
             installedVersion !== undefined &&
             olds?.k3s.channel === news.k3s.channel
@@ -330,28 +440,86 @@ export const NodeProvider = () => {
           if (
             news.initialServer &&
             installedVersion !== undefined &&
-            news.secretsEncryption !== undefined
+            news.secretsEncryption !== undefined &&
+            !restoringInitial
           ) {
             await prepareExistingClusterEncryption(
-              news.server,
+              server,
               installedVersion,
               desiredVersion,
               news.secretsEncryption.migrateExisting,
               news.secretsEncryption.failureInjection,
             );
           }
+          const bootstrapReplaced =
+            !news.initialServer &&
+            news.role === "server" &&
+            installedVersion !== undefined &&
+            olds?.bootstrap?.serverId !== undefined &&
+            olds.bootstrap.serverId !== news.bootstrap?.serverId;
+          if (bootstrapReplaced) {
+            await sshScript(
+              server,
+              `set -euo pipefail
+systemctl stop k3s
+if [ -d /var/lib/rancher/k3s/server/db ]; then
+  mv /var/lib/rancher/k3s/server/db /var/lib/rancher/k3s/server/db.alchemy-pre-rejoin-$(date +%s)
+fi
+`,
+            );
+          }
           await sshScript(
-            news.server,
-            buildInstallScript(effectiveNews, privateIp, desiredVersion),
+            server,
+            buildInstallScript(
+              effectiveNews,
+              privateIp,
+              desiredVersion,
+              restoringInitial,
+            ),
             15 * 60_000,
           );
-          const admin = news.initialServer
-            ? news.server
-            : news.bootstrap!.server;
+          let recovery:
+            | {
+                restoredSnapshot: string;
+                snapshotCreatedAt: string;
+                completedAt: string;
+              }
+            | undefined;
+          if (restoringInitial) {
+            const token = Redacted.value(output!.token!);
+            const snapshots = await listRemoteEtcdSnapshots(
+              news.etcdSnapshots.s3!,
+              news.etcdSnapshots.folder,
+            );
+            const selected = selectRecoverySnapshot(
+              snapshots,
+              output!.clusterId,
+              token,
+              news.recovery!.maximumSnapshotAge,
+            );
+            await sshScript(
+              server,
+              buildRecoveryScript(
+                selected,
+                token,
+                news.etcdSnapshots.s3!,
+                news.etcdSnapshots.folder,
+                news.etcdSnapshots.retention,
+                news.recovery!,
+              ),
+              30 * 60_000,
+            );
+            recovery = {
+              restoredSnapshot: selected.name,
+              snapshotCreatedAt: selected.createdAt.toISOString(),
+              completedAt: new Date().toISOString(),
+            };
+          }
+          const admin = news.initialServer ? server : news.bootstrap!.server;
           await ssh(admin, providerIdPatchCommand(desiredName, news.server.id));
           await waitForNode(admin, desiredName);
           if (news.role === "server") {
-            const encryption = await inspectSecretsEncryption(news.server);
+            const encryption = await inspectSecretsEncryption(server);
             const migrationPending =
               news.secretsEncryption?.migrateExisting === true &&
               ((!encryption.enabled && encryption.stage === "start") ||
@@ -372,15 +540,18 @@ export const NodeProvider = () => {
               );
             }
           }
-          if (replacingServer && output !== undefined) {
+          if (replacingServer && output !== undefined && !restoringInitial) {
             await drainNode(admin, output.name);
           }
           const token = news.initialServer
             ? Redacted.make(
-                await ssh(
-                  news.server,
-                  "cat /var/lib/rancher/k3s/server/node-token",
-                ),
+                await ssh(server, "cat /var/lib/rancher/k3s/server/node-token"),
+              )
+            : undefined;
+          const clusterId = news.initialServer
+            ? await ssh(
+                server,
+                "k3s kubectl get namespace kube-system -o jsonpath='{.metadata.uid}'",
               )
             : undefined;
           return {
@@ -391,7 +562,12 @@ export const NodeProvider = () => {
             privateIp,
             version: desiredVersion,
             ...(token === undefined ? {} : { token }),
-            server: news.server,
+            ...(clusterId === undefined ? {} : { clusterId }),
+            ...(restoringInitial && output !== undefined
+              ? { obsoleteNodeName: output.name }
+              : {}),
+            ...(recovery === undefined ? {} : { recovery }),
+            server,
           };
         },
         catch: (cause) =>

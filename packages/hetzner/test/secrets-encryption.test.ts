@@ -4,12 +4,16 @@ import type { NodeReference, ServerReference } from "../src/types.ts";
 const remote = vi.hoisted(() => ({
   ssh: vi.fn(),
   sshScript: vi.fn(),
+  k3sVersion: vi.fn(),
 }));
 
 vi.mock("../src/remote.ts", () => remote);
 
-const { ensureSecretsEncryption, prepareExistingClusterEncryption } =
-  await import("../src/secrets-encryption.ts");
+const {
+  ensureSecretsEncryption,
+  prepareExistingClusterEncryption,
+  rotateSecretsEncryptionKeys,
+} = await import("../src/secrets-encryption.ts");
 
 const server: ServerReference = {
   id: 1,
@@ -44,6 +48,7 @@ Active  Key Type  Name
 beforeEach(() => {
   remote.ssh.mockReset();
   remote.sshScript.mockReset();
+  remote.k3sVersion.mockReset();
 });
 
 describe("existing K3s Secret encryption", () => {
@@ -146,5 +151,21 @@ describe("existing K3s Secret encryption", () => {
       "hashes do not match",
     );
     expect(remote.sshScript).not.toHaveBeenCalled();
+  });
+
+  it("uses K3s dynamic key rotation and verifies the result", async () => {
+    remote.k3sVersion.mockResolvedValue("v1.35.7+k3s1");
+    remote.ssh
+      .mockResolvedValueOnce("")
+      .mockResolvedValueOnce(status(true, "reencrypt_finished", "Secretbox"));
+
+    await rotateSecretsEncryptionKeys([node]);
+
+    expect(remote.ssh).toHaveBeenNthCalledWith(
+      1,
+      server,
+      "k3s secrets-encrypt rotate-keys",
+      5 * 60_000,
+    );
   });
 });

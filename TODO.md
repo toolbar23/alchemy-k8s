@@ -733,72 +733,83 @@ idempotent Alchemy deployment after detecting an outage.
 
 S3 backup integration and restore proof (P0):
 
-- [ ] Replace the Hetzner-specific `EtcdS3Backup` credential shape with
+- [x] Replace the Hetzner-specific `EtcdS3Backup` credential shape with
       `S3BucketAccess` from `alchemy-s3-access`; keep the K3s snapshot folder,
       schedule, and retention in `Cluster` configuration.
-- [ ] Pass an optional session token and path-style selection through every K3s
+- [x] Pass an optional session token and path-style selection through every K3s
       snapshot save, list, prune, and restore operation.
-- [ ] Require the backup bucket to outlive the cluster and document a separate
+- [x] Require the backup bucket to outlive the cluster and document a separate
       retained stack with encrypted remote Alchemy state.
-- [ ] Persist the original K3s server token in encrypted state and prove it can
-      decrypt a snapshot after the original server has been deleted.
-- [ ] List and validate remote snapshots without relying on the unavailable
+- [x] Persist the original K3s server token in encrypted state and pass it only
+      to a validated restore on the replacement server.
+- [ ] Live-prove that the persisted token decrypts a snapshot after the original
+      server has been deleted.
+- [x] List and validate remote snapshots without relying on the unavailable
       Kubernetes API or a Kubernetes S3 configuration Secret.
-- [ ] Reject empty, foreign-cluster, or older-than-policy snapshots before
+- [x] Reject empty, foreign-cluster, or older-than-policy snapshots before
       restore; fail safely if K3s checksum verification identifies corruption.
 - [ ] Prove S3 restore onto a new host for a single-control-plane cluster.
 - [ ] Prove S3 restore and etcd membership reconstruction for an HA cluster.
 
 Automatic initial-control-plane recovery (P1):
 
-- [ ] Add an explicit opt-in recovery policy such as
+- [x] Add an explicit opt-in recovery policy such as
       `restoreOnInitialControlPlaneReplacement` and `maximumSnapshotAge`.
-- [ ] Distinguish greenfield bootstrap, an intact-server restart, deliberate
+- [x] Distinguish greenfield bootstrap, an intact-server restart, deliberate
       destruction, and physical initial-server replacement.
-- [ ] On replacement, select the newest valid snapshot within policy and restore
+- [x] On replacement, select the newest valid snapshot within policy and restore
       it with the original server token plus explicit S3 CLI credentials.
-- [ ] Make restore resumable and idempotent across interruption after server
+- [x] Make restore resumable and idempotent across interruption after server
       creation, snapshot download, etcd reset, normal K3s start, and state
       persistence.
-- [ ] Refuse recovery without a valid snapshot and original token; retain the
+- [x] Refuse recovery without a valid snapshot and original token; retain the
       replacement and backups for diagnosis instead of bootstrapping an empty
       cluster under the old identity.
-- [ ] Start K3s normally after reset and wait for datastore, API, and Secret
+- [x] Start K3s normally after reset and wait for datastore, API, and Secret
       encryption health before changing workers.
-- [ ] Verify the API load balancer targets the replacement server.
-- [ ] Reconfigure every worker from the old initial server's private IP to the
+- [x] Verify the API load balancer targets the replacement server.
+- [x] Reconfigure every worker from the old initial server's private IP to the
       replacement private IP, restart agents, and wait for Ready.
-- [ ] Remove the obsolete Kubernetes Node object only after the replacement and
+- [x] Remove the obsolete Kubernetes Node object only after the replacement and
       workers are healthy.
-- [ ] Prevent two monitoring or CI invocations from restoring concurrently by
+- [x] Prevent two monitoring or CI invocations from restoring concurrently by
       requiring a locked remote Alchemy state backend.
-- [ ] Document the external health-check and scheduled/event-trigger contract;
+- [x] Document the external health-check and scheduled/event-trigger contract;
       do not imply that Alchemy detects outages while it is not running.
-- [ ] Add controlled failure injection for every recovery checkpoint.
-- [ ] Add a `small-x86` disaster-recovery E2E that creates stateful cluster
+- [x] Add controlled failure injection for every recovery checkpoint.
+- [x] Add a `small-x86` disaster-recovery E2E that creates stateful cluster
       data, confirms a remote snapshot, deletes the control plane, invokes the
       recovery deployment, verifies API/workload/state recovery, and tears down
       exact owned resources.
-- [ ] Record snapshot age, detection delay, replacement time, API recovery time,
+- [x] Record snapshot age, detection delay, replacement time, API recovery time,
       worker reconnection time, total RTO, and observable RPO in the E2E report.
 
 ### P0
 
-- [ ] Implement SSH host identity verification.
-- [ ] Add explicit server-side sshd hardening.
-- [ ] Wait explicitly for cloud-init completion.
+- [x] Implement SSH host identity verification.
+- [x] Add explicit server-side sshd hardening.
+- [x] Wait explicitly for cloud-init completion.
 - [ ] Complete single-node, worker, and HA upgrade/protection E2E.
-- [ ] Verify HCCM and CSI token rotation and rollouts.
-- [ ] Pin or vendor remote bootstrap and installation artifacts.
-- [ ] Pin GitHub Actions to commit SHAs.
+- [x] Verify HCCM and CSI token rotation and rollouts.
+- [x] Pin or vendor remote bootstrap and installation artifacts.
+- [x] Pin GitHub Actions to commit SHAs.
 
 ### P1
 
-- [ ] Add private-only management mode.
-- [ ] Add Flannel `wireguard-native` support.
-- [ ] Add K3s Secret-encryption key rotation.
-- [ ] Add Kubernetes API audit logging.
-- [ ] Enforce or strongly preflight encrypted production Alchemy state.
+- [x] Add private-only management mode.
+- [x] Add Flannel `wireguard-native` support.
+- [x] Add K3s Secret-encryption key rotation.
+- [x] Add Kubernetes API audit logging.
+- [x] Enforce or strongly preflight encrypted production Alchemy state.
+
+Phase 8 implementation evidence recorded on 2026-08-26: unit tests cover the
+direct SigV4 S3 inventory, token/cluster/age rejection, restore checkpoints, the
+patched-version gate, OpenSSH-accepted deterministic host identities, strict
+SSH, private management lookup, dynamic Secret-key rotation, and HCCM/CSI
+rollouts. The destructive `small-x86`/`ha-x86` recovery harness is in place. The
+unchecked restore/proof items above remain live gates: they require a retained
+S3 bucket and an encrypted, TLS, locked Postgres state backend and must not be
+marked proven from unit tests alone.
 
 ## Deliberately deferred
 
@@ -823,10 +834,14 @@ Automatic initial-control-plane recovery (P1):
 - [x] 2. Add composable Helm readiness without patching Alchemy core.
 - [x] 3. Enable K3s Secret encryption for new clusters.
 - [x] 4. Scaffold and prepare `alchemy-s3-access` for publication.
-- [ ] 5. Integrate `S3BucketAccess` with K3s snapshots and prove
-      single-control-plane restore.
-- [ ] 6. Implement and E2E-test automatic single-control-plane recovery.
-- [ ] 7. Prove HA restore and extend recovery to HA membership reconstruction.
+- [x] 5. Integrate `S3BucketAccess` with K3s snapshots and recovery.
+- [ ] 5a. Live-prove single-control-plane S3 restore.
+- [x] 6. Implement automatic single-control-plane recovery and its destructive
+      E2E harness.
+- [ ] 6a. Run the single-control-plane recovery E2E.
+- [x] 7. Implement HA membership reconstruction and extend the recovery E2E to
+      `ha-x86`.
+- [ ] 7a. Live-prove the HA recovery path.
 - [x] 8. Scaffold `alchemy-kubernetes-addons`.
 - [x] 9. Retire the superseded `alchemy-grafana` credential scaffold.
 - [x] 10. Implement the S3-backed Parseable add-on and optional Ingress.

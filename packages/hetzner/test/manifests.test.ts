@@ -14,6 +14,7 @@ import {
 import {
   buildInstallScript,
   createNodeReconcileLimiter,
+  K3S_INSTALL_SHA256,
   nodeName,
   providerIdPatchCommand,
 } from "../src/node.ts";
@@ -57,9 +58,33 @@ describe("Hetzner bootstrap", () => {
     expect(script).toContain(
       `kubectl apply -f ${JSON.stringify(SYSTEM_UPGRADE_CONTROLLER_MANIFEST)}\nfor attempt in $(seq 1 60); do\n`,
     );
+    expect(
+      script.split(
+        `kubectl apply -f ${JSON.stringify(SYSTEM_UPGRADE_CONTROLLER_MANIFEST)}`,
+      ),
+    ).toHaveLength(2);
     expect(script).toContain(
       `done\nkubectl wait --for=condition=Established crd/plans.upgrade.cattle.io --timeout=5m\nprintf %s`,
     );
+  });
+
+  it("restarts HCCM and CSI when their Hetzner token rotates", () => {
+    const script = buildAddonScript(
+      {
+        hcloudToken: Redacted.make("rotated-token"),
+        networkName: "test-network",
+        networkZone: "eu-central",
+        k3s: definition,
+      } as unknown as ClusterStateProps,
+      true,
+    );
+    expect(script).toContain(
+      "rollout restart deployment/hcloud-cloud-controller-manager deployment/hcloud-csi-controller",
+    );
+    expect(script).toContain(
+      "rollout status deployment/hcloud-cloud-controller-manager",
+    );
+    expect(script).toContain("rollout status deployment/hcloud-csi-controller");
   });
 
   it("pins HCCM independently from the Kubernetes minor", () => {
@@ -108,10 +133,20 @@ describe("Hetzner bootstrap", () => {
           endpoint: "s3.example.test",
           region: "eu-central-1",
           bucket: "backups",
-          accessKey: Redacted.make("access"),
-          secretKey: Redacted.make("secret"),
+          accessKeyId: "access",
+          secretAccessKey: Redacted.make("secret"),
+          sessionToken: Redacted.make("session"),
           forcePathStyle: true,
         },
+      },
+      hcloudToken: Redacted.make("hcloud"),
+      privateManagement: false,
+      stateId: "cloudflare-http",
+      apiAuditLog: {
+        enabled: true,
+        maximumAgeDays: 30,
+        maximumBackups: 10,
+        maximumSizeMegabytes: 100,
       },
     };
     const script = buildInstallScript(props, "10.0.0.2", "v1.35.2+k3s1");
@@ -121,9 +156,14 @@ describe("Hetzner bootstrap", () => {
     expect(script).toContain(`'--flannel-iface' "$private_interface"`);
     expect(script).toContain("'--kubelet-arg' 'provider-id=hcloud://1'");
     expect(script).toContain("'--etcd-s3-bucket-lookup-type' 'path'");
+    expect(script).toContain("'--etcd-s3-session-token' 'session'");
     expect(script).toContain("'--secrets-encryption'");
     expect(script).toContain("'--secrets-encryption-provider' 'secretbox'");
     expect(script).toContain("secret");
+    expect(script).toContain("audit-policy-file");
+    expect(script).toContain(K3S_INSTALL_SHA256);
+    expect(script).toContain("sh \"$install_script\" 'server'");
+    expect(script).not.toContain('sh "$install_script" --');
   });
 
   it("starts agents without waiting for the external cloud controller", () => {
@@ -149,12 +189,21 @@ describe("Hetzner bootstrap", () => {
         apiEndpoint: "203.0.113.3",
         scheduleWorkloadsOnControlPlane: false,
         etcdSnapshots: { schedule: "0 * * * *", retention: 24 },
+        hcloudToken: Redacted.make("hcloud"),
+        privateManagement: false,
+        stateId: "cloudflare-http",
+        apiAuditLog: {
+          enabled: true,
+          maximumAgeDays: 30,
+          maximumBackups: 10,
+          maximumSizeMegabytes: 100,
+        },
       },
       "10.0.0.3",
       "v1.35.7+k3s1",
     );
     expect(script).toContain("INSTALL_K3S_SKIP_START='true'");
-    expect(script).toContain("systemctl start --no-block k3s-agent");
+    expect(script).toContain("systemctl restart --no-block k3s-agent");
   });
 
   it("uses version-gated Secret encryption and parses K3s status safely", () => {
@@ -227,6 +276,12 @@ Active  Key Type           Name
     expect(
       productionStateWarning("production", "cloudflare-http", "test"),
     ).toBe(undefined);
+    expect(productionStateWarning("production", "postgres", "test", true)).toBe(
+      undefined,
+    );
+    expect(productionStateWarning("production", "postgres", "test")).toContain(
+      "confirmed encryption at rest",
+    );
   });
 
   it("gives replacement generations different Kubernetes node names", () => {

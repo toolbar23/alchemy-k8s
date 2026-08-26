@@ -2,6 +2,7 @@ import type * as Hetzner from "alchemy/Hetzner";
 import type * as Kubernetes from "alchemy/Kubernetes";
 import type { Resource } from "alchemy";
 import type * as Redacted from "effect/Redacted";
+import type { S3BucketAccess } from "alchemy-s3-access";
 import type { Providers } from "./providers.ts";
 import type {
   ClusterVersion,
@@ -26,14 +27,34 @@ export interface WorkerPool {
   taints?: string[];
 }
 
-export interface EtcdS3Backup {
-  endpoint: string;
-  region: string;
-  bucket: string;
+export interface EtcdSnapshotConfig {
+  /** K3s cron expression. @default "0 * * * *" */
+  schedule?: string;
+  /** @default 24 */
+  retention?: number;
+  /** Prefix owned by this cluster inside the bucket. */
   folder?: string;
-  accessKey: Redacted.Redacted<string>;
-  secretKey: Redacted.Redacted<string>;
-  forcePathStyle?: boolean;
+  /** The bucket is external and must outlive the cluster. */
+  s3?: S3BucketAccess;
+}
+
+export type RecoveryFailurePoint =
+  | "after-server-creation"
+  | "after-snapshot-selection"
+  | "after-snapshot-download"
+  | "after-etcd-reset"
+  | "after-normal-start"
+  | "after-state-persistence";
+
+export interface InitialControlPlaneRecovery {
+  /** Explicitly permits a replacement server to restore the old cluster. */
+  restoreOnInitialControlPlaneReplacement: true;
+  /** Reject snapshots older than this many seconds. */
+  maximumSnapshotAge: number;
+  /** Changing this value deliberately replaces only control plane 1. */
+  replacementToken?: string;
+  /** Test-only interruption; repeat the deploy without it to resume. */
+  failureInjection?: RecoveryFailurePoint;
 }
 
 export interface ClusterProps {
@@ -45,10 +66,16 @@ export interface ClusterProps {
     locations: string | string[];
   };
   workerPools: WorkerPool[];
+  state?: {
+    /** Assert provider-side encryption for an unrecognized remote state ID. */
+    encryptionAtRestConfirmed?: boolean;
+  };
   ssh: {
     allowedCidrs: string[];
     /** Verify that this deploy runner is included in allowedCidrs. @default true */
     validateCurrentIp?: boolean;
+    /** SSH uses the private network and public node ingress is closed. */
+    privateOnly?: boolean;
   };
   apiLoadBalancer?: {
     type?: string;
@@ -59,12 +86,17 @@ export interface ClusterProps {
   scheduleWorkloadsOnControlPlane?: boolean;
   /** @default true */
   protectAgainstDeletion?: boolean;
-  etcdSnapshots?: {
-    /** K3s cron expression. @default "0 * * * *" */
-    schedule?: string;
-    /** @default 24 */
-    retention?: number;
-    s3?: EtcdS3Backup;
+  etcdSnapshots?: EtcdSnapshotConfig;
+  recovery?: InitialControlPlaneRecovery;
+  apiAuditLog?: {
+    /** @default true */
+    enabled?: boolean;
+    /** @default 30 */
+    maximumAgeDays?: number;
+    /** @default 10 */
+    maximumBackups?: number;
+    /** @default 100 */
+    maximumSizeMegabytes?: number;
   };
   secretsEncryption?: {
     /**
@@ -75,6 +107,8 @@ export interface ClusterProps {
     migrateExisting?: boolean;
     /** Controlled recovery testing; the next deploy resumes after removal. */
     failureInjection?: SecretsEncryptionFailurePoint;
+    /** Change this opaque value to perform one dynamic key rotation. */
+    keyRotationToken?: string;
   };
 }
 
@@ -91,6 +125,10 @@ export interface ServerReference {
   name: string;
   ipv4?: string;
   privateKey?: Redacted.Redacted<string>;
+  /** Address used by the deploy runner (public or private). */
+  managementAddress?: string;
+  /** Pinned OpenSSH host public key created with the server. */
+  hostPublicKey?: string;
 }
 
 export interface NodeReference {
@@ -101,6 +139,15 @@ export interface NodeReference {
   privateIp: string;
   version: string;
   token?: Redacted.Redacted<string>;
+  /** Kubernetes kube-system UID, persisted for S3 snapshot identity checks. */
+  clusterId?: string;
+  /** Old node object retained until cluster-wide recovery is healthy. */
+  obsoleteNodeName?: string;
+  recovery?: {
+    restoredSnapshot: string;
+    snapshotCreatedAt: string;
+    completedAt: string;
+  };
   server: ServerReference;
 }
 
@@ -121,7 +168,18 @@ export interface NodeProps {
   etcdSnapshots: {
     schedule: string;
     retention: number;
-    s3?: EtcdS3Backup;
+    folder?: string;
+    s3?: S3BucketAccess;
+  };
+  hcloudToken: Redacted.Redacted<string>;
+  privateManagement: boolean;
+  stateId: string;
+  recovery?: InitialControlPlaneRecovery;
+  apiAuditLog: {
+    enabled: boolean;
+    maximumAgeDays: number;
+    maximumBackups: number;
+    maximumSizeMegabytes: number;
   };
   secretsEncryption?: {
     migrateExisting: boolean;
@@ -141,6 +199,7 @@ export interface ClusterStateProps {
   k3s: NormalizedK3sDefinition;
   /** Pure dependency edges that hold cluster readiness behind every node. */
   nodeServerIds: number[];
+  nodeNames: string[];
   controlPlanes: NodeReference[];
   loadBalancer: {
     ipv4: string | null;
@@ -152,7 +211,9 @@ export interface ClusterStateProps {
   topologyFingerprint: string;
   secretsEncryption: {
     failureInjection?: SecretsEncryptionFailurePoint;
+    keyRotationToken?: string;
   };
+  obsoleteNodeNames: string[];
 }
 
 export interface ClusterAttributes {
@@ -167,6 +228,11 @@ export interface ClusterAttributes {
     provider: "secretbox" | "aescbc" | undefined;
     stage: string | undefined;
     hashesMatch: boolean;
+  };
+  recovery?: {
+    restoredSnapshot: string;
+    snapshotCreatedAt: string;
+    completedAt: string;
   };
 }
 

@@ -30,6 +30,8 @@ export interface K3sDefinition {
     traefik?: boolean;
     metricsServer?: boolean;
   };
+  /** K3s' built-in Flannel data plane. @default "vxlan" */
+  flannelBackend?: "vxlan" | "wireguard-native";
 }
 
 export interface NormalizedK3sDefinition {
@@ -42,6 +44,7 @@ export interface NormalizedK3sDefinition {
     traefik: boolean;
     metricsServer: boolean;
   };
+  flannelBackend: "vxlan" | "wireguard-native";
 }
 
 export interface ClusterVersion {

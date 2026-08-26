@@ -19,6 +19,7 @@ import { k3sVersion, ssh, sshScript } from "./remote.ts";
 import {
   ensureSecretsEncryption,
   inspectClusterEncryption,
+  rotateSecretsEncryptionKeys,
 } from "./secrets-encryption.ts";
 import type {
   ClusterAttributes,
@@ -65,7 +66,10 @@ const endpoint = (props: ClusterStateProps): string => {
   return `https://${props.loadBalancer.ipv4}:6443`;
 };
 
-export const buildAddonScript = (props: ClusterStateProps): string => {
+export const buildAddonScript = (
+  props: ClusterStateProps,
+  tokenChanged = false,
+): string => {
   const token = Redacted.value(props.hcloudToken);
   const tokenBase64 = Buffer.from(token).toString("base64");
   const networkBase64 = Buffer.from(props.networkName).toString("base64");
@@ -83,7 +87,7 @@ kubectl apply -f ${JSON.stringify(HCCM_MANIFEST)}
 kubectl -n kube-system set env deployment/hcloud-cloud-controller-manager HCLOUD_LOAD_BALANCERS_NETWORK_ZONE=${JSON.stringify(props.networkZone)} HCLOUD_LOAD_BALANCERS_USE_PRIVATE_IP=true
 printf %s ${JSON.stringify(csiSecret)} | base64 -d | kubectl apply -f -
 kubectl apply -f ${JSON.stringify(CSI_MANIFEST)}
-kubectl apply -f ${JSON.stringify(SYSTEM_UPGRADE_CONTROLLER_MANIFEST)}
+${tokenChanged ? "kubectl -n kube-system rollout restart deployment/hcloud-cloud-controller-manager deployment/hcloud-csi-controller\n" : ""}kubectl apply -f ${JSON.stringify(SYSTEM_UPGRADE_CONTROLLER_MANIFEST)}
 for attempt in $(seq 1 60); do
   kubectl get crd plans.upgrade.cattle.io >/dev/null 2>&1 && break
   if [ "$attempt" -eq 60 ]; then
@@ -113,7 +117,7 @@ const renderKubeconfig = (
     { name: "load-balancer", server: endpoint(props) },
     ...props.controlPlanes.map((node) => ({
       name: node.name,
-      server: `https://${node.server.ipv4}:6443`,
+      server: `https://${node.server.managementAddress ?? node.server.ipv4 ?? node.privateIp}:6443`,
     })),
   ];
   const document: KubeconfigDocument = {
@@ -208,6 +212,9 @@ const observe = async (
     channel: props.k3s.channel,
     topologyFingerprint: props.topologyFingerprint,
     secretsEncryption: await inspectClusterEncryption(props.controlPlanes),
+    ...(props.controlPlanes[0]?.recovery === undefined
+      ? {}
+      : { recovery: props.controlPlanes[0].recovery }),
   };
 };
 
@@ -237,18 +244,54 @@ export const ClusterProvider = () =>
         }
         return undefined;
       }),
-    reconcile: ({ fqn, news }) =>
+    reconcile: ({ fqn, news, olds }) =>
       Effect.tryPromise({
         try: async () => {
           await ensureSecretsEncryption(
             news.controlPlanes,
             news.secretsEncryption.failureInjection,
           );
+          if (
+            news.secretsEncryption.keyRotationToken !== undefined &&
+            news.secretsEncryption.keyRotationToken !==
+              olds?.secretsEncryption.keyRotationToken
+          ) {
+            await rotateSecretsEncryptionKeys(news.controlPlanes);
+          }
+          const hcloudTokenChanged =
+            olds !== undefined &&
+            Redacted.value(olds.hcloudToken) !==
+              Redacted.value(news.hcloudToken);
           await sshScript(
             admin(news).server,
-            buildAddonScript(news),
+            buildAddonScript(news, hcloudTokenChanged),
             15 * 60_000,
           );
+          await ssh(
+            admin(news).server,
+            `for attempt in $(seq 1 60); do k3s kubectl --server=${JSON.stringify(endpoint(news))} get --raw=/readyz >/dev/null 2>&1 && exit 0; sleep 5; done; echo 'API load balancer did not become ready' >&2; exit 1`,
+            6 * 60_000,
+          );
+          const obsoleteNodeNames = news.obsoleteNodeNames.filter(
+            (name): name is string => typeof name === "string",
+          );
+          if (obsoleteNodeNames.length > 0) {
+            await ssh(
+              admin(news).server,
+              `${news.nodeNames
+                .map(
+                  (name) =>
+                    `k3s kubectl wait --for=condition=Ready node/${JSON.stringify(name)} --timeout=10m`,
+                )
+                .join(" && ")} && ${obsoleteNodeNames
+                .map(
+                  (name) =>
+                    `k3s kubectl delete node ${JSON.stringify(name)} --ignore-not-found`,
+                )
+                .join(" && ")}`,
+              12 * 60_000,
+            );
+          }
           const observed = await observe(fqn, news);
           if (observed === undefined)
             throw new Error("Cluster disappeared after add-on installation");

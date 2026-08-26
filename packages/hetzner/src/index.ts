@@ -6,8 +6,10 @@ export type {
   Cluster as ClusterInstance,
   ClusterAttributes,
   ClusterProps,
-  EtcdS3Backup,
+  EtcdSnapshotConfig,
+  InitialControlPlaneRecovery,
   K3sDefinition,
   NodeReference,
+  RecoveryFailurePoint,
   WorkerPool,
 } from "./types.ts";

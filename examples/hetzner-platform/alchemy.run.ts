@@ -57,6 +57,21 @@ export default Alchemy.Stack(
         },
       ],
       ssh: { allowedCidrs: [yield* Config.string("ADMIN_CIDR")] },
+      etcdSnapshots: {
+        folder: yield* Config.string("K3S_BACKUP_PREFIX"),
+        s3: {
+          endpoint: yield* Config.string("K3S_BACKUP_S3_ENDPOINT"),
+          region: yield* Config.string("K3S_BACKUP_S3_REGION"),
+          bucket: yield* Config.string("K3S_BACKUP_S3_BUCKET"),
+          accessKeyId: yield* Config.string("K3S_BACKUP_S3_ACCESS_KEY_ID"),
+          secretAccessKey: yield* Config.redacted(
+            "K3S_BACKUP_S3_SECRET_ACCESS_KEY",
+          ),
+          forcePathStyle: yield* Config.boolean(
+            "K3S_BACKUP_S3_FORCE_PATH_STYLE",
+          ).pipe(Config.withDefault(false)),
+        },
+      },
       protectAgainstDeletion: true,
     });
 

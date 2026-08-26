@@ -37,6 +37,7 @@ describe("k3d adapter", () => {
         "persistent-k3s-data:/var/lib/rancher/k3s@server:0",
         "8080:80/tcp@loadbalancer",
         "--disable=traefik@server:0",
+        "--flannel-backend=vxlan@server:0",
       ]),
     );
   });

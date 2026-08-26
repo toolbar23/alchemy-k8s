@@ -391,7 +391,12 @@ export const openContext = async (argv, { requireLedger = false } = {}) => {
     reportDir,
     credentials,
     token: credentials.token,
-    secrets: [credentials.token],
+    secrets: [
+      credentials.token,
+      process.env.HETZNER_E2E_STATE_DATABASE_URL,
+      process.env.HETZNER_E2E_S3_SECRET_ACCESS_KEY,
+      process.env.HETZNER_E2E_S3_SESSION_TOKEN,
+    ].filter((value) => typeof value === "string" && value.length > 0),
     ledger: existing,
     allowedCidrs: await detectAllowedCidrs(),
   };

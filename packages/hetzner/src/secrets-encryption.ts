@@ -3,7 +3,7 @@ import type {
   SecretsEncryptionFailurePoint,
   ServerReference,
 } from "./types.ts";
-import { ssh, sshScript } from "./remote.ts";
+import { k3sVersion, ssh, sshScript } from "./remote.ts";
 
 export interface SecretsEncryptionStatus {
   enabled: boolean;
@@ -386,6 +386,40 @@ export const inspectClusterEncryption = async (
         : "mixed",
     hashesMatch: statuses.every(({ status }) => status.hashesMatch === true),
   };
+};
+
+/** K3s v1.35+ rotates and re-encrypts dynamically without manual restarts. */
+export const rotateSecretsEncryptionKeys = async (
+  controlPlanes: NodeReference[],
+): Promise<void> => {
+  const first = controlPlanes[0];
+  if (first === undefined) throw new Error("Cluster has no control-plane node");
+  for (const node of controlPlanes) {
+    const version = await k3sVersion(node.server);
+    const parsed =
+      version === undefined ? undefined : /^v?1\.(\d+)\./.exec(version);
+    if (parsed === undefined || parsed === null || Number(parsed[1]) < 35) {
+      throw new Error(
+        `Dynamic Secret-encryption key rotation requires K3s v1.35+ on ${node.name}`,
+      );
+    }
+  }
+  await ssh(first.server, "k3s secrets-encrypt rotate-keys", 5 * 60_000);
+  const statuses = await Promise.all(
+    controlPlanes.map(async (node) => ({
+      node,
+      status: await inspectSecretsEncryption(node.server),
+    })),
+  );
+  const unhealthy = statuses.filter(
+    ({ status }) =>
+      !status.enabled || status.provider !== "secretbox" || !status.hashesMatch,
+  );
+  if (unhealthy.length > 0) {
+    throw new Error(
+      `Secret-encryption key rotation did not converge on: ${unhealthy.map(({ node }) => node.name).join(", ")}`,
+    );
+  }
 };
 
 export const ensureSecretsEncryption = async (

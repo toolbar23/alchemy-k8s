@@ -146,6 +146,10 @@ export const renderClusterConfig = (name, desired, allowedCidrs) => {
     },
     scheduleWorkloadsOnControlPlane: profile.scheduleWorkloadsOnControlPlane,
     workerPools: desired.workerPools.map((pool) => ({ ...pool })),
+    ...(desired.etcdSnapshots === undefined
+      ? {}
+      : { etcdSnapshots: desired.etcdSnapshots }),
+    ...(desired.recovery === undefined ? {} : { recovery: desired.recovery }),
   };
 };
 

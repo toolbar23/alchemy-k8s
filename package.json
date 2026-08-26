@@ -41,6 +41,7 @@
     "e2e:hetzner:idempotence": "node scripts/hetzner-e2e/idempotence.mjs",
     "e2e:hetzner:scale": "node scripts/hetzner-e2e/scale.mjs",
     "e2e:hetzner:replace": "node scripts/hetzner-e2e/replace.mjs",
+    "e2e:hetzner:disaster-recovery": "node scripts/hetzner-e2e/disaster-recovery.mjs",
     "e2e:hetzner:upgrade": "node scripts/hetzner-e2e/upgrade.mjs",
     "e2e:hetzner:protection": "node scripts/hetzner-e2e/protection.mjs",
     "e2e:cloudflare:permissions": "node scripts/cloudflare-permission-negative.mjs",
@@ -49,6 +50,7 @@
   },
   "devDependencies": {
     "@effect/platform-node": "4.0.0-rc.112",
+    "@effect/sql-pg": "4.0.0-rc.112",
     "@eslint/js": "^9.35.0",
     "@types/node": "^22.18.0",
     "alchemy": "2.0.0-beta.74",

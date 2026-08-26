@@ -89,7 +89,7 @@ export const validateClusterProps = (props: ClusterProps): void => {
     }
     networkZoneFor([pool.location, ...normalizeLocations(props)]);
   }
-  if (props.ssh.allowedCidrs.length === 0) {
+  if (props.ssh.allowedCidrs.length === 0 && !props.ssh.privateOnly) {
     throw new Error("ssh.allowedCidrs must explicitly allow at least one CIDR");
   }
   for (const cidr of props.ssh.allowedCidrs) {
@@ -117,6 +117,50 @@ export const validateClusterProps = (props: ClusterProps): void => {
     (!Number.isInteger(retention) || retention < 1)
   ) {
     throw new Error("etcdSnapshots.retention must be a positive integer");
+  }
+  if (
+    props.etcdSnapshots?.folder !== undefined &&
+    (!/^[a-zA-Z0-9][a-zA-Z0-9/_.-]*$/.test(props.etcdSnapshots.folder) ||
+      props.etcdSnapshots.folder.endsWith("/"))
+  ) {
+    throw new Error(
+      "etcdSnapshots.folder must be a non-empty S3 prefix without a trailing slash",
+    );
+  }
+  if (props.recovery !== undefined) {
+    if (props.etcdSnapshots?.s3 === undefined) {
+      throw new Error("recovery requires etcdSnapshots.s3");
+    }
+    if (
+      !Number.isInteger(props.recovery.maximumSnapshotAge) ||
+      props.recovery.maximumSnapshotAge < 1
+    ) {
+      throw new Error("recovery.maximumSnapshotAge must be positive seconds");
+    }
+    if (
+      props.recovery.failureInjection !== undefined &&
+      ![
+        "after-server-creation",
+        "after-snapshot-selection",
+        "after-snapshot-download",
+        "after-etcd-reset",
+        "after-normal-start",
+        "after-state-persistence",
+      ].includes(props.recovery.failureInjection)
+    ) {
+      throw new Error(
+        `Unknown recovery.failureInjection: ${String(props.recovery.failureInjection)}`,
+      );
+    }
+  }
+  for (const [name, value] of Object.entries({
+    "apiAuditLog.maximumAgeDays": props.apiAuditLog?.maximumAgeDays,
+    "apiAuditLog.maximumBackups": props.apiAuditLog?.maximumBackups,
+    "apiAuditLog.maximumSizeMegabytes": props.apiAuditLog?.maximumSizeMegabytes,
+  })) {
+    if (value !== undefined && (!Number.isInteger(value) || value < 1)) {
+      throw new Error(`${name} must be a positive integer`);
+    }
   }
   const failureInjection = props.secretsEncryption?.failureInjection;
   if (

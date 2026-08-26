@@ -4,6 +4,7 @@ import { join } from "node:path";
 import * as Redacted from "effect/Redacted";
 import { run } from "../../shared/src/process.ts";
 import type { ServerReference } from "./types.ts";
+import { cidrContains } from "./validation.ts";
 
 const privateKeyOf = (server: ServerReference): string => {
   if (server.privateKey === undefined) {
@@ -14,26 +15,77 @@ const privateKeyOf = (server: ServerReference): string => {
     : Redacted.value(server.privateKey);
 };
 
+export const resolveServerAccess = async (
+  server: ServerReference,
+  networkCidr: string,
+  hcloudToken: Redacted.Redacted<string>,
+  privateManagement: boolean,
+  fetcher: typeof fetch = fetch,
+): Promise<ServerReference> => {
+  if (server.hostPublicKey === undefined) {
+    throw new Error(`Hetzner server ${server.name} has no pinned SSH host key`);
+  }
+  if (!privateManagement) {
+    if (server.ipv4 === undefined)
+      throw new Error(`Hetzner server ${server.name} has no public IPv4`);
+    return { ...server, managementAddress: server.ipv4 };
+  }
+  const response = await fetcher(
+    `https://api.hetzner.cloud/v1/servers/${server.serverId}`,
+    {
+      headers: { Authorization: `Bearer ${Redacted.value(hcloudToken)}` },
+      signal: AbortSignal.timeout(10_000),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Unable to resolve private management address for ${server.name}: HTTP ${response.status}`,
+    );
+  }
+  const document = (await response.json()) as {
+    server?: { private_net?: Array<{ ip?: string }> };
+  };
+  const address = document.server?.private_net
+    ?.map(({ ip }) => ip)
+    .find(
+      (ip): ip is string => ip !== undefined && cidrContains(networkCidr, ip),
+    );
+  if (address === undefined) {
+    throw new Error(
+      `Hetzner server ${server.name} has no private network address in API output`,
+    );
+  }
+  return { ...server, managementAddress: address };
+};
+
 export const ssh = async (
   server: ServerReference,
   command: string,
   timeout = 120_000,
 ): Promise<string> => {
-  if (server.ipv4 === undefined)
-    throw new Error(`Hetzner server ${server.name} has no public IPv4`);
+  const address = server.managementAddress ?? server.ipv4;
+  if (address === undefined)
+    throw new Error(`Hetzner server ${server.name} has no management address`);
+  if (server.hostPublicKey === undefined)
+    throw new Error(`Hetzner server ${server.name} has no pinned SSH host key`);
   const directory = await mkdtemp(join(tmpdir(), "alchemy-k3s-ssh-"));
   const keyPath = join(directory, "id_ed25519");
+  const knownHostsPath = join(directory, "known_hosts");
   try {
     await writeFile(keyPath, privateKeyOf(server), { mode: 0o600 });
+    const hostKey = server.hostPublicKey.split(/\s+/).slice(0, 2).join(" ");
+    await writeFile(knownHostsPath, `[${address}]:22 ${hostKey}\n`, {
+      mode: 0o600,
+    });
     const result = await run(
       "ssh",
       [
         "-i",
         keyPath,
         "-o",
-        "StrictHostKeyChecking=no",
+        "StrictHostKeyChecking=yes",
         "-o",
-        "UserKnownHostsFile=/dev/null",
+        `UserKnownHostsFile=${knownHostsPath}`,
         "-o",
         "IdentitiesOnly=yes",
         "-o",
@@ -42,7 +94,7 @@ export const ssh = async (
         "ConnectTimeout=10",
         "-o",
         "LogLevel=ERROR",
-        `root@${server.ipv4}`,
+        `root@${address}`,
         command,
       ],
       { timeout },
@@ -51,6 +103,16 @@ export const ssh = async (
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+};
+
+export const waitForCloudInit = async (
+  server: ServerReference,
+): Promise<void> => {
+  await ssh(
+    server,
+    'cloud-init status --wait --long && test "$(cloud-init status --format=json | python3 -c \'import json,sys; print(json.load(sys.stdin)["status"] )\')" = done',
+    10 * 60_000,
+  );
 };
 
 export const sshScript = async (

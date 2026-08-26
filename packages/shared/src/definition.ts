@@ -94,7 +94,16 @@ export const normalizeK3sDefinition = (
       traefik: definition.addons?.traefik ?? true,
       metricsServer: definition.addons?.metricsServer ?? true,
     },
+    flannelBackend: definition.flannelBackend ?? "vxlan",
   };
+  if (
+    normalized.flannelBackend !== "vxlan" &&
+    normalized.flannelBackend !== "wireguard-native"
+  ) {
+    throw new Error(
+      `flannelBackend must be "vxlan" or "wireguard-native"; received ${JSON.stringify(normalized.flannelBackend)}`,
+    );
+  }
   const ranges = [
     ["clusterCidr", normalized.clusterCidr],
     ["serviceCidr", normalized.serviceCidr],

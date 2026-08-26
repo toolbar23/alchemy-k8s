@@ -24,6 +24,25 @@ By default the current public IPv4 is detected and allowed as `/32` for SSH and
 direct API fallback. Set `HETZNER_E2E_ALLOWED_CIDRS` to a comma-separated list
 when using stable CI, office, or VPN egress.
 
+Disaster recovery additionally requires a TLS Postgres URL whose provider has
+encryption at rest and an already-created retained S3 bucket:
+
+```sh
+HETZNER_E2E_STATE_DATABASE_URL=postgresql://...
+HETZNER_E2E_STATE_ENCRYPTED=true
+HETZNER_E2E_S3_ENDPOINT=https://...
+HETZNER_E2E_S3_REGION=eu-central-1
+HETZNER_E2E_S3_BUCKET=retained-backups
+HETZNER_E2E_S3_ACCESS_KEY_ID=...
+HETZNER_E2E_S3_SECRET_ACCESS_KEY=...
+# optional:
+HETZNER_E2E_S3_SESSION_TOKEN=...
+HETZNER_E2E_S3_FORCE_PATH_STYLE=true
+```
+
+The credentials should be bucket-scoped. The harness never creates or deletes
+the bucket and redacts database/S3 secrets from its command logs.
+
 ## Commands
 
 Run the complete ordered suite:
@@ -52,6 +71,20 @@ npm run e2e:hetzner:protection -- --profile worker-x86
 
 Scale and replacement reject `single-x86`. The aggregate runner records those
 phases as not applicable for that profile.
+
+The destructive recovery phase is separate from the ordinary ledger because it
+uses locked Postgres state. It supports `small-x86` (single control plane) and
+`ha-x86` (etcd membership reconstruction):
+
+```sh
+npm run e2e:hetzner:disaster-recovery -- --profile small-x86
+```
+
+It creates a Secret, waits for a successful remote snapshot, physically deletes
+control plane 1 through the Hetzner API, reruns Alchemy, verifies the Secret and
+all Nodes, records snapshot age/RPO/RTO stage timings, then disables protection
+and destroys exact cluster resources. The run-scoped S3 prefix remains for
+forensics and explicit retention management.
 
 Worker replacement uses `WorkerPool.replacementToken`, so both generations use
 the profile's existing server type. The workspace carries a version-pinned patch

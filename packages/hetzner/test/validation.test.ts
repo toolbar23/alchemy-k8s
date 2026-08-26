@@ -3,6 +3,7 @@ import {
   cidrContains,
   networkZoneFor,
   normalizeLocations,
+  validateClusterProps,
 } from "../src/validation.ts";
 
 describe("Hetzner topology validation", () => {
@@ -26,5 +27,42 @@ describe("Hetzner topology validation", () => {
     expect(() => networkZoneFor(["nbg1", "ash"])).toThrow(
       /same Hetzner network zone/,
     );
+  });
+
+  it("allows zero public CIDRs only in private management mode", () => {
+    const props = {
+      k3s: {} as never,
+      controlPlane: {
+        count: 1 as const,
+        serverType: "cx23",
+        locations: "nbg1",
+      },
+      workerPools: [],
+      scheduleWorkloadsOnControlPlane: true,
+      ssh: { allowedCidrs: [], privateOnly: true },
+    };
+    expect(() => validateClusterProps(props)).not.toThrow();
+    expect(() =>
+      validateClusterProps({ ...props, ssh: { allowedCidrs: [] } }),
+    ).toThrow("explicitly allow");
+  });
+
+  it("requires S3 and a bounded age for automatic recovery", () => {
+    const props = {
+      k3s: {} as never,
+      controlPlane: {
+        count: 1 as const,
+        serverType: "cx23",
+        locations: "nbg1",
+      },
+      workerPools: [],
+      scheduleWorkloadsOnControlPlane: true,
+      ssh: { allowedCidrs: ["203.0.113.1/32"] },
+      recovery: {
+        restoreOnInitialControlPlaneReplacement: true as const,
+        maximumSnapshotAge: 0,
+      },
+    };
+    expect(() => validateClusterProps(props)).toThrow("etcdSnapshots.s3");
   });
 });

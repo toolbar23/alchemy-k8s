@@ -12,11 +12,15 @@ Required configuration:
 - `PUBLIC_DOMAIN`, `ACME_EMAIL`, and `ADMIN_CIDR`
 - `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, and
   `S3_SECRET_ACCESS_KEY`
+- `K3S_BACKUP_S3_ENDPOINT`, `K3S_BACKUP_S3_REGION`, `K3S_BACKUP_S3_BUCKET`,
+  `K3S_BACKUP_S3_ACCESS_KEY_ID`, `K3S_BACKUP_S3_SECRET_ACCESS_KEY`, and a
+  cluster-unique `K3S_BACKUP_PREFIX`
 - `PARSEABLE_ADMIN_PASSWORD`
 
 Optional configuration:
 
 - `S3_FORCE_PATH_STYLE` defaults to `false`.
+- `K3S_BACKUP_S3_FORCE_PATH_STYLE` defaults to `false`.
 - `ENABLE_OTEL` defaults to `true`.
 - `ENABLE_OBSERVABILITY_INGRESS` defaults to `false`.
 
@@ -33,6 +37,14 @@ A/AAAA/CNAME records and registry TXT records. cert-manager owns only temporary
 `_acme-challenge` records and the generated TLS Secrets. Parseable owns its
 S3-backed telemetry service, while the optional collector is the in-cluster
 credential and transport boundary.
+
+The K3s backup bucket is deliberately not declared by this stack. Create it in a
+separate retained infrastructure stack, enable provider-side encryption and
+versioning there, and issue credentials limited to that one bucket/prefix. A
+cluster destroy therefore cannot delete its recovery root. The Cloudflare state
+store encrypts the original K3s token and S3 credentials, but it does not expose
+a cross-process deployment lock; use the locked Postgres state backend plus
+`recovery` when enabling automatic control-plane replacement.
 
 K3s metrics-server is unrelated to this telemetry stack. It keeps a short window
 of CPU and memory resource metrics for `kubectl top` and autoscaling; it is not

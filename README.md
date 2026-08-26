@@ -100,9 +100,25 @@ cluster, then joins the remaining control-plane servers and workers in parallel.
 Reconciliation of existing nodes remains serialized per cluster, so upgrades and
 create-first replacements still roll one node at a time.
 
-Nodes receive a public IPv4 address for direct deployment SSH and internet
-egress, but public IPv6 is disabled. Kubernetes and load-balancer traffic
-between nodes uses the private network.
+Nodes receive public IPv4 for outbound internet and public IPv6 is disabled. By
+default deployment SSH is CIDR-restricted on that IPv4. With
+`ssh.privateOnly: true`, all node ingress is closed and Alchemy resolves and
+uses the private address; the runner must already route to the Hetzner network
+through a VPN or private runner. The public NIC remains only for outbound K3s
+and image downloads, avoiding a hidden NAT-gateway requirement.
+
+Every server receives a deterministic Ed25519 host key whose seed is Redacted in
+Alchemy state. Cloud-init installs that key and a hardened sshd drop-in; Alchemy
+waits for cloud-init and uses a one-host `known_hosts` file with strict
+checking. K3s uses a commit-pinned installer whose SHA-256 is verified before
+execution; the installer in turn verifies the exact resolved K3s binary.
+
+Set `k3s.flannelBackend: "wireguard-native"` for encrypted pod transport. API
+audit logging is enabled by default with bounded local rotation and can be tuned
+through `apiAuditLog`. Production-like stage names now fail early unless the
+state backend is known encrypted or `state.encryptionAtRestConfirmed` is set.
+Hetzner credential changes re-apply Secrets and deterministically restart both
+HCCM and CSI.
 
 ### Upgrades and recovery
 
@@ -119,10 +135,88 @@ cluster has a brief API outage during an update. Three control planes retain API
 availability. Changing the minor requires changing `channel` in code; skipped
 automatic minors and downgrades are rejected.
 
-Embedded etcd snapshots run hourly with retention 24 by default. Optional
-S3-compatible replication accepts Effect `Redacted` access and secret keys. Use
-an encrypted remote Alchemy state for production: state necessarily holds the
-Alchemy-managed server deploy keys, K3s join token, and any backup credentials.
+Embedded etcd snapshots run hourly with retention 24 by default. S3 replication
+uses the provider-neutral `S3BucketAccess` contract from `alchemy-s3-access`:
+
+```ts
+etcdSnapshots: {
+  schedule: "0 * * * *",
+  retention: 24,
+  folder: "clusters/production",
+  s3: {
+    endpoint: "https://s3.eu-central-1.amazonaws.com",
+    region: "eu-central-1",
+    bucket: "retained-k3s-backups",
+    accessKeyId,
+    secretAccessKey,
+    sessionToken, // optional
+    forcePathStyle: false,
+  },
+}
+```
+
+The bucket must be created in a separate retained stack with encryption,
+versioning, and bucket-scoped credentials. K3s receives session-token and
+path-style settings for scheduled save/prune and restore. Recovery lists and
+HEADs objects directly with SigV4, without a Kubernetes API or S3 credential
+Secret, then rejects empty, expired, foreign-cluster, or wrong-token objects.
+K3s performs the download and embedded-etcd checksum verification.
+
+Automatic initial-control-plane recovery is explicit and is invoked by an
+external monitor or scheduled CI deployment; Alchemy is not a resident
+controller:
+
+```ts
+state: { encryptionAtRestConfirmed: true },
+recovery: {
+  restoreOnInitialControlPlaneReplacement: true,
+  maximumSnapshotAge: 15 * 60,
+  // Set/change only to test a deliberate create-first replacement.
+  replacementToken: "2026-08-drill-1",
+},
+```
+
+This mode requires Alchemy's Postgres state backend because it holds and checks
+a cross-process advisory lease. The database must use TLS and provider-side
+encryption, acknowledged by `state.encryptionAtRestConfirmed`; local, in-memory,
+unlocked HTTP/Cloudflare, and S3 state are refused for automatic recovery. The
+original Redacted server token and kube-system UID are kept in state and matched
+against K3s' S3 object metadata. If the initial physical server disappears, the
+next deployment creates one host, restores the newest valid snapshot with the
+original token, waits for etcd/API/Secret-encryption health, reconstructs HA
+membership, reconnects workers, verifies the load balancer, and only then
+removes the obsolete Kubernetes Node.
+
+Upgrading an existing pre-Phase-8 cluster changes every server's cloud-init to
+install its pinned SSH host identity, so Alchemy performs create-first
+replacements. Before that deployment, configure retained S3 snapshots, migrate
+the Alchemy state to encrypted Postgres, enable `recovery`, and confirm a recent
+remote snapshot. Old state has no cluster ID; the first recovery therefore
+accepts snapshots only when the original server-token hash resolves to exactly
+one S3 cluster ID. Ambiguous metadata fails closed and leaves the old host and
+replacement available for diagnosis.
+
+Recovery checkpoints in `/var/lib/rancher/k3s/.alchemy-recovery-phase` make the
+sequence resumable. `recovery.failureInjection` accepts `after-server-creation`,
+`after-snapshot-selection`, `after-snapshot-download`, `after-etcd-reset`,
+`after-normal-start`, and `after-state-persistence`. On invalid metadata or
+checksum failure the replacement and backup are retained; an empty cluster is
+never bootstrapped under the old identity. Compressed restores require K3s
+v1.35.3 or newer due to
+[GHSA-jxr7-mqhw-9p98](https://github.com/k3s-io/k3s/security/advisories/GHSA-jxr7-mqhw-9p98).
+
+The destructive recovery harness records snapshot age, detection delay,
+replacement/restore time, API recovery, worker reconnection, total RTO, and an
+observable RPO. It supports `small-x86` and `ha-x86`:
+
+```sh
+npm run e2e:hetzner:disaster-recovery -- --profile small-x86
+```
+
+It requires `HETZNER_E2E_STATE_DATABASE_URL`,
+`HETZNER_E2E_STATE_ENCRYPTED=true`, and the documented `HETZNER_E2E_S3_*`
+variables. A successful run destroys exactly the cluster resources and retains
+the unique backup prefix.
 
 Kubernetes Secret encryption at rest is enabled on every new control-plane
 server. K3s uses `secretbox` whenever the resolved patch supports it and the
@@ -137,6 +231,8 @@ every control plane, and re-encrypts all Secrets:
 ```ts
 secretsEncryption: {
   migrateExisting: true;
+  // Change this later to perform one dynamic K3s v1.35+ key rotation.
+  keyRotationToken: "2026-08";
 }
 ```
 
@@ -175,8 +271,8 @@ every read so a clean CI runner can reconstruct it.
   create-first: a new node joins and becomes Ready before the old node is
   drained. A failed readiness check retains both servers and fails safely.
 - Ubuntu 24.04 is the only node OS in v1. OS upgrades, autoscaling, arbitrary
-  bootstrap hooks, private-only deploy runners, and custom SSH ports are out of
-  scope.
+  bootstrap hooks, public-NIC-less nodes without an explicit NAT topology, and
+  custom SSH ports are out of scope.
 - The Kubernetes API load balancer is always public. Hetzner firewalls cannot
   attach to load balancers; Kubernetes TLS and client certificates secure the
   API. NodePorts are not opened publicly.
