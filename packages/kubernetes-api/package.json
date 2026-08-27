@@ -1,6 +1,6 @@
 {
   "name": "alchemy-kubernetes-native",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Typed Kubernetes API resources with Pulumi-like lifecycle semantics for Alchemy",
   "license": "Apache-2.0",
   "type": "module",
