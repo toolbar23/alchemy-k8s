@@ -220,7 +220,12 @@ const observe = async (
 
 export const ClusterProvider = () =>
   Provider.succeed(ClusterState, {
-    stables: ["kubeconfigPath", "topologyFingerprint"],
+    stables: [
+      "connection",
+      "endpoint",
+      "kubeconfigPath",
+      "topologyFingerprint",
+    ],
     read: ({ fqn, olds }) =>
       hasObservableClusterState(olds)
         ? Effect.tryPromise({

@@ -21,7 +21,7 @@ export interface WorkerPool {
   serverType: string;
   location: string;
   count: number;
-  /** Changing this value performs a create-first rolling replacement. */
+  /** Changing this value performs a serialized fixed-name machine replacement. */
   replacementToken?: string;
   labels?: Record<string, string>;
   taints?: string[];
@@ -124,12 +124,62 @@ export interface ServerReference {
   serverId: number;
   name: string;
   ipv4?: string;
-  privateKey?: Redacted.Redacted<string>;
+  privateKey: Redacted.Redacted<string>;
   /** Address used by the deploy runner (public or private). */
   managementAddress?: string;
   /** Pinned OpenSSH host public key created with the server. */
-  hostPublicKey?: string;
+  hostPublicKey: string;
 }
+
+export interface MachineProps {
+  /** Changes whenever a create-only property intentionally changes. */
+  generation: string;
+  /** Stable external transaction identity. It must be unique in the project. */
+  name: string;
+  credentials: {
+    token: Redacted.Redacted<string>;
+    apiBaseUrl: string;
+  };
+  serverType: string;
+  image: string;
+  location: string;
+  sshKey: { id: number };
+  network: { networkId: number };
+  firewall: { id: number };
+  userData: string;
+  enableIpv4: boolean;
+  enableIpv6: boolean;
+  deleteProtection: boolean;
+  labels: Record<string, string>;
+}
+
+export interface MachineAttributes {
+  id: number;
+  serverId: number;
+  name: string;
+  status: string;
+  serverType: string;
+  serverTypeId: number;
+  image: string | undefined;
+  imageId: number | undefined;
+  location: string;
+  locationId: number;
+  ipv4: string | undefined;
+  ipv6: string | undefined;
+  networkIds: number[];
+  firewallIds: number[];
+  deleteProtection: boolean;
+  created: string;
+  labels: Record<string, string>;
+}
+
+export type MachineResource = Resource<
+  "Hetzner.K3s.Machine",
+  MachineProps,
+  MachineAttributes,
+  never,
+  Providers
+>;
 
 export interface NodeReference {
   logicalName: string;

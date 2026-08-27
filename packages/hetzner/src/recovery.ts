@@ -332,7 +332,7 @@ const checkpoint = (
   phase: string,
   selected: RecoveryFailurePoint | undefined,
   point: RecoveryFailurePoint,
-): string => `printf '%s\\n' ${shellQuote(phase)} > "$checkpoint"
+): string => `write_checkpoint ${shellQuote(phase)}
 ${selected === point ? `echo ${shellQuote(`Injected recovery failure at ${point}`)} >&2\nexit 97` : ""}`;
 
 /** Resumable reset/start sequence. K3s downloads and verifies the S3 object. */
@@ -349,8 +349,22 @@ export const buildRecoveryScript = (
     .join(" ");
   return `set -euo pipefail
 checkpoint=/var/lib/rancher/k3s/.alchemy-recovery-phase
+expected_snapshot=${shellQuote(snapshot.name)}
+write_checkpoint() {
+  printf 'snapshot=%s\nphase=%s\n' "$expected_snapshot" "$1" > "$checkpoint.tmp"
+  mv "$checkpoint.tmp" "$checkpoint"
+}
 install -d -m 0700 /var/lib/rancher/k3s
-phase=$(cat "$checkpoint" 2>/dev/null || true)
+recorded_snapshot=$(sed -n 's/^snapshot=//p' "$checkpoint" 2>/dev/null || true)
+phase=$(sed -n 's/^phase=//p' "$checkpoint" 2>/dev/null || true)
+if [ -f "$checkpoint" ] && { [ "$recorded_snapshot" != "$expected_snapshot" ] || [ -z "$phase" ]; }; then
+  echo "Recovery checkpoint does not match the selected snapshot" >&2
+  exit 1
+fi
+case "$phase" in
+  ""|server_created|snapshot_selected|snapshot_downloaded|etcd_reset|normal_started|complete) ;;
+  *) echo "Recovery checkpoint has an unknown phase" >&2; exit 1 ;;
+esac
 if [ -z "$phase" ]; then
 ${checkpoint("server_created", policy.failureInjection, "after-server-creation")}
   phase=server_created

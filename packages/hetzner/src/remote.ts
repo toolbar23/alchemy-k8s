@@ -6,14 +6,8 @@ import { run } from "../../shared/src/process.ts";
 import type { ServerReference } from "./types.ts";
 import { cidrContains } from "./validation.ts";
 
-const privateKeyOf = (server: ServerReference): string => {
-  if (server.privateKey === undefined) {
-    throw new Error(`Hetzner server ${server.name} has no Alchemy deploy key`);
-  }
-  return typeof server.privateKey === "string"
-    ? server.privateKey
-    : Redacted.value(server.privateKey);
-};
+const privateKeyOf = (server: ServerReference): string =>
+  Redacted.value(server.privateKey);
 
 export const knownHostsEntry = (address: string, publicKey: string): string => {
   const hostKey = publicKey.split(/\s+/).slice(0, 2).join(" ");
@@ -27,9 +21,6 @@ export const resolveServerAccess = async (
   privateManagement: boolean,
   fetcher: typeof fetch = fetch,
 ): Promise<ServerReference> => {
-  if (server.hostPublicKey === undefined) {
-    throw new Error(`Hetzner server ${server.name} has no pinned SSH host key`);
-  }
   if (!privateManagement) {
     if (server.ipv4 === undefined)
       throw new Error(`Hetzner server ${server.name} has no public IPv4`);
@@ -71,8 +62,6 @@ export const ssh = async (
   const address = server.managementAddress ?? server.ipv4;
   if (address === undefined)
     throw new Error(`Hetzner server ${server.name} has no management address`);
-  if (server.hostPublicKey === undefined)
-    throw new Error(`Hetzner server ${server.name} has no pinned SSH host key`);
   const directory = await mkdtemp(join(tmpdir(), "alchemy-k3s-ssh-"));
   const keyPath = join(directory, "id_ed25519");
   const knownHostsPath = join(directory, "known_hosts");

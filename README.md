@@ -98,7 +98,10 @@ only when the single-node tradeoff is intentional.
 Initial provisioning waits for the first control-plane server to initialize the
 cluster, then joins the remaining control-plane servers and workers in parallel.
 Reconciliation of existing nodes remains serialized per cluster, so upgrades and
-create-first replacements still roll one node at a time.
+replacements still converge one node at a time. A machine replacement is
+delete-first because its stable Hetzner name is the external transaction
+identity; the obsolete Kubernetes Node is retained until the replacement is
+Ready and is then removed idempotently.
 
 Nodes receive public IPv4 for outbound internet and public IPv6 is disabled. By
 default deployment SSH is CIDR-restricted on that IPv4. With
@@ -113,6 +116,45 @@ waits for cloud-init and uses a one-host `known_hosts` file with strict
 checking. K3s uses a commit-pinned installer whose SHA-256 is verified before
 execution; the installer in turn verifies the exact resolved K3s binary.
 
+### Crash convergence and state boundaries
+
+`alchemy-hetzner-k3s` does not treat the end of an Alchemy provider callback as
+its only transaction boundary. Alchemy state records desired graph progress,
+while recoverable physical facts record sub-operation progress:
+
+- Every machine has a required stable Hetzner name, exact Alchemy ownership
+  labels, and a declared generation label.
+- The per-machine deploy SSH key exists as its own Alchemy/Hetzner resource
+  before server creation. Server reconciliation creates no hidden credential.
+- Every rerun observes the server by persisted ID and then stable name before it
+  mutates anything. Network, firewall, metadata, protection, deletion, and
+  create-response races are re-observed and checked against exact invariants.
+- Create-only changes use delete-first replacement because two servers cannot
+  own the same stable name. A missing physical server is replacement, even if
+  Alchemy state still says that a prior replacement completed.
+- K3s install and Kubernetes publication are repeatable. HA peer rejoin,
+  snapshot restore, and Secret-encryption migration use host-side checkpoints
+  only where several external commands form one logical transaction. A
+  checkpoint is never accepted without re-observing its physical postcondition.
+- K3s receives the canonical Hetzner provider ID as a kubelet argument. Node
+  reconciliation waits through registration `NotFound` responses until the Node
+  is Ready; it does not race registration with a redundant API patch.
+
+The intended invariant is: terminating a deployment after any accepted external
+action and rerunning it converges without duplicate servers, leaked deploy keys,
+or manual edits to Alchemy state.
+
+This is implemented without an Alchemy core patch. The machine resource owns its
+Hetzner action polling, observation, and retry policy; an Alchemy callback
+timeout merely causes the next deployment to re-observe the same external
+identity.
+
+This lifecycle is deliberately greenfield. There is no compatibility or adoption
+path from the former `Hetzner.Server`-backed cluster state. Destroy clusters
+created by `alchemy-hetzner-k3s` 0.1.0-alpha.4 or earlier before deploying this
+version. Do not point the new provider at those existing server names; strict
+generation ownership will refuse them.
+
 Set `k3s.flannelBackend: "wireguard-native"` for encrypted pod transport. API
 audit logging is enabled by default with bounded local rotation and can be tuned
 through `apiAuditLog`. Production-like stage names now fail early unless the
@@ -123,8 +165,10 @@ HCCM and CSI.
 ### Upgrades and recovery
 
 The minor is pinned in code (`v1.35` in the example). Initial provisioning
-resolves that channel to an exact K3s patch. The Hetzner cluster installs the
-pinned System Upgrade Controller version and two rolling plans:
+resolves that channel to an exact K3s patch from the K3s channel service's
+redirect metadata without following the redirect to GitHub. Resolution has
+bounded retry/backoff. The Hetzner cluster installs the pinned System Upgrade
+Controller version and two rolling plans:
 
 - one control-plane server at a time;
 - then one worker at a time;
@@ -155,6 +199,12 @@ etcdSnapshots: {
 }
 ```
 
+When bundled Traefik is enabled, the initial server installs a durable K3s
+`HelmChartConfig` before K3s starts. Its LoadBalancer Service suppresses private
+ingress publication while HCCM continues to route to node targets over the
+private network. This prevents ExternalDNS from publishing the cluster-private
+address beside the public load-balancer address.
+
 The bucket must be created in a separate retained stack with encryption,
 versioning, and bucket-scoped credentials. K3s receives session-token and
 path-style settings for scheduled save/prune and restore. Recovery lists and
@@ -171,7 +221,7 @@ state: { encryptionAtRestConfirmed: true },
 recovery: {
   restoreOnInitialControlPlaneReplacement: true,
   maximumSnapshotAge: 15 * 60,
-  // Set/change only to test a deliberate create-first replacement.
+  // Set/change only to test a deliberate machine replacement.
   replacementToken: "2026-08-drill-1",
 },
 ```
@@ -187,17 +237,9 @@ original token, waits for etcd/API/Secret-encryption health, reconstructs HA
 membership, reconnects workers, verifies the load balancer, and only then
 removes the obsolete Kubernetes Node.
 
-Upgrading an existing pre-Phase-8 cluster changes every server's cloud-init to
-install its pinned SSH host identity, so Alchemy performs create-first
-replacements. Before that deployment, configure retained S3 snapshots, migrate
-the Alchemy state to encrypted Postgres, enable `recovery`, and confirm a recent
-remote snapshot. Old state has no cluster ID; the first recovery therefore
-accepts snapshots only when the original server-token hash resolves to exactly
-one S3 cluster ID. Ambiguous metadata fails closed and leaves the old host and
-replacement available for diagnosis.
-
 Recovery checkpoints in `/var/lib/rancher/k3s/.alchemy-recovery-phase` make the
-sequence resumable. `recovery.failureInjection` accepts `after-server-creation`,
+sequence resumable and bind the transaction to the exact selected snapshot.
+`recovery.failureInjection` accepts `after-server-creation`,
 `after-snapshot-selection`, `after-snapshot-download`, `after-etcd-reset`,
 `after-normal-start`, and `after-state-persistence`. On invalid metadata or
 checksum failure the replacement and backup are retained; an empty cluster is
@@ -267,9 +309,10 @@ every read so a clean CI runner can reconstruct it.
   `protectAgainstDeletion: false`, then run destroy.
 - Control-plane count, locations, server type, network CIDR, and Kubernetes
   CIDRs are immutable in v1. Create a replacement cluster to change them.
-- Worker counts and worker server types are mutable. Replacements are
-  create-first: a new node joins and becomes Ready before the old node is
-  drained. A failed readiness check retains both servers and fails safely.
+- Worker counts and worker server types are mutable. The old machine is removed
+  first because the replacement owns the same stable Hetzner name. The old
+  Kubernetes Node remains until the new node is Ready; its final drain/delete is
+  safe to repeat.
 - Ubuntu 24.04 is the only node OS in v1. OS upgrades, autoscaling, arbitrary
   bootstrap hooks, public-NIC-less nodes without an explicit NAT topology, and
   custom SSH ports are out of scope.
@@ -507,7 +550,7 @@ networking, CCM/CSI, embedded etcd, unschedulable masters, firewall allowlists,
 per-server deploy keys, load-balanced API access, and explicit maintenance
 behavior. This provider intentionally differs where Alchemy's resource graph
 provides safer lifecycle behavior: it always creates an API load balancer, does
-not expose NodePorts, and performs create-first worker rolls instead of
+not expose NodePorts, and reconciles machine replacement directly instead of
 requiring a separate maintenance command.
 
 ## Local cluster

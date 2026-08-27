@@ -1,8 +1,8 @@
+import { spawnSync } from "node:child_process";
 import * as Redacted from "effect/Redacted";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
 import { describe, expect, it, vi } from "vitest";
 import { parse } from "yaml";
 import { hardenedCloudInit, sshIdentity } from "../src/hardening.ts";
@@ -160,8 +160,14 @@ describe("Hetzner K3s disaster recovery", () => {
     );
     expect(script).toContain("--cluster-reset-restore-path='snapshot'");
     expect(script).toContain("'--etcd-s3-session-token' 'session'");
-    expect(script).toContain('phase=$(cat "$checkpoint"');
+    expect(script).toContain("expected_snapshot='snapshot'");
+    expect(script).toContain(
+      "Recovery checkpoint does not match the selected snapshot",
+    );
+    expect(script).toContain("Recovery checkpoint has an unknown phase");
+    expect(script).toContain("write_checkpoint 'etcd_reset'");
     expect(script).toContain("Injected recovery failure at after-etcd-reset");
+    expect(spawnSync("bash", ["-n"], { input: script }).status).toBe(0);
     expect(script).toContain("get --raw=/readyz");
   });
 

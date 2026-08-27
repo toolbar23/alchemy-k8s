@@ -828,6 +828,79 @@ unchecked restore/proof items above remain live gates: they require a retained
 S3 bucket and an encrypted, TLS, locked Postgres state backend and must not be
 marked proven from unit tests alone.
 
+### Crash convergence and transaction boundaries
+
+The greenfield machine lifecycle replaces the generic `Hetzner.Server`
+composition. No compatibility aliases, legacy credential fields, or adoption
+heuristics are retained.
+
+- [x] Require one stable physical name and declared generation for every
+      machine.
+- [x] Create the deterministic per-machine deploy SSH key as a separate resource
+      before server creation; create no callback-local hidden key.
+- [x] Re-observe by physical ID and stable name on every read, diff, reconcile,
+      and interrupted delete.
+- [x] Refuse a same-name server whose Alchemy ownership or generation labels do
+      not match.
+- [x] Make fixed-name replacements delete-first and make unprotect/delete safe
+      to resume.
+- [x] Reconcile exact metadata, private-network, firewall, public-IP, and
+      deletion-protection invariants from observed Hetzner state.
+- [x] Recover accepted-but-lost create/action responses and Hetzner
+      locked/unfinished action races by observing the desired postcondition.
+- [x] Add fault injection after every machine mutation and prove a rerun creates
+      no duplicate server and a second rerun performs no mutation.
+- [x] Make Kubernetes Node drain/delete presence-checked and repeatable.
+- [x] Pass the canonical provider ID to the kubelet, remove the redundant
+      post-install Node patch, and retry registration `NotFound` until Ready.
+- [x] Add interrupted worker-replacement tests after K3s install and
+      obsolete-node deletion.
+- [x] Resolve K3s channels from redirect metadata without contacting GitHub and
+      retry transient channel-service failures with bounded backoff.
+- [x] Install a Traefik `HelmChartConfig` before K3s startup that excludes the
+      private load-balancer ingress address while retaining private targets.
+- [x] Keep `connection` and `endpoint` stable during mutable cluster updates and
+      prove a downstream Kubernetes consumer still plans successfully.
+- [x] Persist HA bootstrap-rejoin preparation/completion on the peer and discard
+      only a partial rejoin database on resume.
+- [x] Bind an initial-control-plane recovery checkpoint to the exact selected
+      snapshot.
+- [x] Reject partial node state that cannot be physically re-observed.
+- [x] Document that clusters created by 0.1.0-alpha.4 or earlier must be
+      destroyed before this lifecycle is used.
+- [x] Remove the Alchemy action-timeout patch and keep machine convergence
+      entirely inside `alchemy-hetzner-k3s`.
+- [ ] Run live process-kill injection after every Hetzner mutation on a
+      disposable one-worker cluster and prove one rerun converges with no leaked
+      servers or SSH keys.
+- [ ] Run the same live interruption matrix during worker replacement and
+      cluster destruction.
+- [ ] Live-prove single-control-plane and HA restore with the new machine
+      resource before recommending production use.
+
+Live alpha.5 evidence recorded on 2026-08-27:
+
+- [x] Persistent per-machine SSH keys were created before servers, strict host
+      verification succeeded, reruns reused servers and keys, and destroy
+      removed the owned keys.
+- [x] A consistent destroy removed all 68 owned resources while retaining the
+      adopted Cloudflare zone.
+- [x] Retrying from consistent alpha.5 state did not enter the former server
+      replacement spiral.
+- [x] Convert the observed worker-registration, channel redirect, private
+      Traefik ingress, and stable-connection failures into package regressions.
+- [x] Force a cluster-property update in Acme's real production plan with the
+      local alpha.6 package and prove all downstream Kubernetes resources retain
+      the connection.
+- [x] Adapt the canonical object-storage URL to K3s's hostname representation at
+      the consumer boundary; the final published-alpha.5 plan has 20 intended
+      application creates, 49 noops, and no cluster churn.
+
+Evidence recorded on 2026-08-27: `mise run publish:dry-run` performed a clean
+install without an Alchemy patch, passed 113 tests across 22 files, found zero
+production dependency vulnerabilities, rendered every pinned add-on chart, and
+successfully packed all four 0.1.0-alpha.6 workspaces.
+
 ## Phase 9: S3-backed container registry add-on
 
 ### 9.1 Minimal registry and storage lifecycle

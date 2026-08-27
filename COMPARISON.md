@@ -1,6 +1,6 @@
 # Comparison with `vitobotta/hetzner-k3s`
 
-Snapshot date: **2026-08-26**
+Snapshot date: **2026-08-27**
 
 Compared projects:
 
@@ -26,10 +26,15 @@ worker replacement, strict public node firewall rules, automatic patch windows,
 deletion protection, isolated kubeconfig output, and direct composition with
 Alchemy's generic Kubernetes resources.
 
-The local provider should not yet be promoted for high-value clusters. Phase 8
-closed the SSH host-identity, sshd-baseline, recovery implementation, and core
-hardening gaps; the largest remaining gates are live single/HA restore proof and
-full upgrade/protection E2E coverage. OTEL, ExternalDNS, cert-manager, and Let's
+The local provider should not yet be promoted for high-value clusters. Its new
+greenfield machine resource closes the callback-local SSH-key leak and stale
+physical-state recovery gap with stable external identity, strict generation
+ownership, re-observation, delete-first replacement, and post-action fault
+tests. A live alpha.5 create/retry/destroy cycle confirmed persistent SSH-key
+ownership and eliminated the former replacement spiral; it also exposed four
+deterministic integration gaps that are now regression-tested locally. The
+remaining gates are the process-kill matrix, single/HA restore proof, and full
+upgrade/protection E2E coverage. OTEL, ExternalDNS, cert-manager, and Let's
 Encrypt remain deliberately composable add-ons outside the core cluster
 resource.
 
@@ -68,58 +73,58 @@ are useful even when the local implementation uses a different architecture.
 
 ## Feature comparison
 
-| Area                       | `alchemy-hetzner-k3s`                                                                                                     | `vitobotta/hetzner-k3s`                                                                           | Gap or decision                                                   |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| Provisioning model         | Declarative Alchemy resources and dependency graph                                                                        | Imperative CLI with YAML configuration                                                            | Different model by design                                         |
-| Lifecycle operations       | Alchemy create/read/update/delete and drift-driven reconciliation                                                         | Separate create, run, upgrade, and delete commands                                                | Local model is narrower but more composable                       |
-| Control plane              | Exactly 1 or 3 servers                                                                                                    | Flexible multi-master configuration                                                               | Opinionated local constraint                                      |
-| Static workers             | Named pools with labels, taints, count, location, server type, and replacement token                                      | Static pools with broader node options                                                            | Core parity for ordinary pools                                    |
-| Declarative worker removal | Supported                                                                                                                 | Missing; tracked upstream in [#773](https://github.com/vitobotta/hetzner-k3s/issues/773)          | Local advantage                                                   |
-| Worker replacement         | Create first, wait Ready, drain, then delete                                                                              | Maintenance workflow with historical replacement failures                                         | Local advantage, E2E verified                                     |
-| Control-plane replacement  | Explicit S3 restore policy, resumable single/HA reconstruction; live proof remains gated                                  | Master maintenance and replacement operations                                                     | Local implementation is safer; production proof pending           |
-| Autoscaling                | Not supported                                                                                                             | Cluster Autoscaler integration                                                                    | Intentionally deferred                                            |
-| External nodes             | Not supported                                                                                                             | Generic SSH and Hetzner Robot nodes                                                               | Intentionally deferred                                            |
-| CPU architectures          | x86 server types in tested profiles                                                                                       | x86 and ARM                                                                                       | Upstream broader                                                  |
-| Operating systems          | Ubuntu 24.04 only                                                                                                         | Multiple images, snapshots, and OS choices                                                        | Opinionated local constraint                                      |
-| Network                    | Dedicated Hetzner private network                                                                                         | New or existing Hetzner network                                                                   | Upstream more flexible                                            |
-| Public node interfaces     | Outbound IPv4 retained; IPv6 disabled; all public node ingress can be closed                                              | Public interfaces can be disabled                                                                 | Upstream supports NIC-less mode; local avoids hidden NAT need     |
-| Private SSH                | Supported when the deploy runner routes to the Hetzner network                                                            | Supported                                                                                         | Broad parity for management traffic                               |
-| API endpoint               | Mandatory public Hetzner Load Balancer                                                                                    | Load balancer optional; direct master access supported                                            | Opinionated local choice                                          |
-| Private API load balancer  | Not supported                                                                                                             | Open work in [PR #791](https://github.com/vitobotta/hetzner-k3s/pull/791)                         | Missing in both released versions                                 |
-| API allowlist              | Node firewall restricts TCP 6443 to explicit CIDRs, but the public load balancer itself cannot receive a Hetzner firewall | Firewall sources are configurable but commonly default open                                       | Local direct-node posture is stronger; public LB remains exposed  |
-| SSH allowlist              | Explicit CIDRs, with current-IP lookup and validation                                                                     | Configurable, commonly defaults to all IPv4/IPv6                                                  | Local safer default                                               |
-| NodePort exposure          | No public NodePort range                                                                                                  | TCP and UDP NodePorts enabled by default; can now be disabled                                     | Local safer default                                               |
-| Custom firewall rules      | Opinionated fixed rules only                                                                                              | Supported                                                                                         | Upstream broader; local avoids a policy DSL                       |
-| Host firewall              | None                                                                                                                      | Optional local firewall                                                                           | Local gap, but upstream implementation has a token-handling issue |
-| CNI                        | Flannel VXLAN or `wireguard-native`                                                                                       | Flannel or Cilium                                                                                 | Upstream broader; local covers encrypted Flannel                  |
-| Network encryption         | Opt-in Flannel `wireguard-native`                                                                                         | Supported                                                                                         | Broad parity for Flannel                                          |
-| Cilium egress              | Not supported                                                                                                             | Supported                                                                                         | Intentionally deferred with Cilium                                |
-| External datastore         | Embedded SQLite/etcd according to topology                                                                                | etcd, PostgreSQL, and MySQL options                                                               | Upstream broader                                                  |
-| Embedded etcd snapshots    | Scheduled, retained, optional S3-compatible replication                                                                   | Supported, including S3                                                                           | Broad parity                                                      |
-| Restore                    | First-class validated/resumable implementation and destructive harness; live proof pending                                | No complete first-class restore flow; [#659](https://github.com/vitobotta/hetzner-k3s/issues/659) | Local implementation advantage; proof gate remains                |
-| HCCM                       | Installed and version-pinned                                                                                              | Optional installation                                                                             | Local is opinionated                                              |
-| CSI                        | Installed and version-pinned                                                                                              | Optional installation                                                                             | Local is opinionated                                              |
-| System Upgrade Controller  | Installed and version-pinned                                                                                              | Optional installation                                                                             | Local is opinionated                                              |
-| Patch upgrades             | Two rolling plans, maintenance window, control planes before workers                                                      | Upgrade command and SUC integration                                                               | Local automation is simpler but needs complete live validation    |
-| Minor upgrades             | Explicit channel change with downgrade/skipped-minor rejection                                                            | Explicit upgrade workflow                                                                         | Both require operator intent                                      |
-| Traefik and ServiceLB      | K3s defaults retained                                                                                                     | Configurable toggles                                                                              | Upstream more flexible                                            |
-| metrics-server             | K3s default retained                                                                                                      | Configurable toggle                                                                               | Upstream more flexible                                            |
-| Registry mirrors           | Not exposed                                                                                                               | Supported                                                                                         | Deferred                                                          |
-| Private registries         | Not exposed                                                                                                               | Supported                                                                                         | Deferred                                                          |
-| Package installation       | Fixed bootstrap only                                                                                                      | Custom packages supported                                                                         | Deliberately omitted                                              |
-| Bootstrap hooks            | No arbitrary hooks                                                                                                        | Supported                                                                                         | Deliberately omitted                                              |
-| Component arguments        | Fixed opinionated arguments                                                                                               | Broad component argument customization                                                            | Deliberately omitted                                              |
-| API hostname               | Load-balancer endpoint and generated kubeconfig contexts                                                                  | Custom API hostname supported                                                                     | Upstream broader                                                  |
-| Placement groups           | Control-plane placement is managed internally                                                                             | Configurable placement groups                                                                     | Upstream broader                                                  |
-| Large-cluster tuning       | No explicit large-cluster profile                                                                                         | Supported                                                                                         | Deferred until measured                                           |
-| SSH keys                   | Per-server Ed25519 deploy keys generated by Alchemy                                                                       | Shared generated or existing SSH key                                                              | Local reduces shared-key scope                                    |
-| Kubeconfig                 | Written under `.alchemy/kubeconfigs/hetzner`, mode `0600`, without mutating the user's default config                     | Written mode `0600`; historical merge behavior was fixed                                          | Local ownership is cleaner                                        |
-| Deletion protection        | Enabled by default and must be explicitly disabled before destroy                                                         | CLI confirmation/lifecycle controls                                                               | Local stronger declarative guard                                  |
-| Resource ownership         | Exact Alchemy resources with provider IDs and deletion graph                                                              | CLI labels/config-derived cleanup                                                                 | Local advantage                                                   |
-| Kubernetes composition     | Implements `Kubernetes.ClusterLike`                                                                                       | Produces kubeconfig for ordinary tooling                                                          | Local advantage inside Alchemy                                    |
-| ExternalDNS                | Zone-scoped Cloudflare add-on with Secret-backed token and TXT ownership                                                  | Not a core capability                                                                             | Separate add-on by design                                         |
-| cert-manager/Let's Encrypt | Pinned generic cert-manager plus exact-zone Cloudflare DNS-01 issuer add-ons                                              | Not a core capability                                                                             | Separate add-ons by design                                        |
-| OTEL/Parseable             | S3-backed Parseable and ClusterIP-only OTLP/HTTP collector add-ons implemented                                            | Not a core capability                                                                             | Separate add-ons by design                                        |
+| Area                       | `alchemy-hetzner-k3s`                                                                                                                      | `vitobotta/hetzner-k3s`                                                                           | Gap or decision                                                    |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Provisioning model         | Declarative graph plus a direct, observe-first Hetzner machine reconciler                                                                  | Imperative CLI with YAML configuration and find-or-create helpers                                 | Both recover from cloud identity; local also persists graph intent |
+| Lifecycle operations       | Alchemy create/read/update/delete and drift-driven reconciliation                                                                          | Separate create, run, upgrade, and delete commands                                                | Local model is narrower but more composable                        |
+| Control plane              | Exactly 1 or 3 servers                                                                                                                     | Flexible multi-master configuration                                                               | Opinionated local constraint                                       |
+| Static workers             | Named pools with labels, taints, count, location, server type, and replacement token                                                       | Static pools with broader node options                                                            | Core parity for ordinary pools                                     |
+| Declarative worker removal | Supported                                                                                                                                  | Missing; tracked upstream in [#773](https://github.com/vitobotta/hetzner-k3s/issues/773)          | Local advantage                                                    |
+| Worker replacement         | Delete fixed-name machine, create the declared generation, wait through registration until Ready, then remove the obsolete Kubernetes Node | Maintenance workflow with historical replacement failures                                         | Live rerun reused machines; interruption matrix remains pending    |
+| Control-plane replacement  | Explicit S3 restore policy, resumable single/HA reconstruction; live proof remains gated                                                   | Master maintenance and replacement operations                                                     | Local implementation is safer; production proof pending            |
+| Autoscaling                | Not supported                                                                                                                              | Cluster Autoscaler integration                                                                    | Intentionally deferred                                             |
+| External nodes             | Not supported                                                                                                                              | Generic SSH and Hetzner Robot nodes                                                               | Intentionally deferred                                             |
+| CPU architectures          | x86 server types in tested profiles                                                                                                        | x86 and ARM                                                                                       | Upstream broader                                                   |
+| Operating systems          | Ubuntu 24.04 only                                                                                                                          | Multiple images, snapshots, and OS choices                                                        | Opinionated local constraint                                       |
+| Network                    | Dedicated Hetzner private network                                                                                                          | New or existing Hetzner network                                                                   | Upstream more flexible                                             |
+| Public node interfaces     | Outbound IPv4 retained; IPv6 disabled; all public node ingress can be closed                                                               | Public interfaces can be disabled                                                                 | Upstream supports NIC-less mode; local avoids hidden NAT need      |
+| Private SSH                | Supported when the deploy runner routes to the Hetzner network                                                                             | Supported                                                                                         | Broad parity for management traffic                                |
+| API endpoint               | Mandatory public Hetzner Load Balancer                                                                                                     | Load balancer optional; direct master access supported                                            | Opinionated local choice                                           |
+| Private API load balancer  | Not supported                                                                                                                              | Open work in [PR #791](https://github.com/vitobotta/hetzner-k3s/pull/791)                         | Missing in both released versions                                  |
+| API allowlist              | Node firewall restricts TCP 6443 to explicit CIDRs, but the public load balancer itself cannot receive a Hetzner firewall                  | Firewall sources are configurable but commonly default open                                       | Local direct-node posture is stronger; public LB remains exposed   |
+| SSH allowlist              | Explicit CIDRs, with current-IP lookup and validation                                                                                      | Configurable, commonly defaults to all IPv4/IPv6                                                  | Local safer default                                                |
+| NodePort exposure          | No public NodePort range                                                                                                                   | TCP and UDP NodePorts enabled by default; can now be disabled                                     | Local safer default                                                |
+| Custom firewall rules      | Opinionated fixed rules only                                                                                                               | Supported                                                                                         | Upstream broader; local avoids a policy DSL                        |
+| Host firewall              | None                                                                                                                                       | Optional local firewall                                                                           | Local gap, but upstream implementation has a token-handling issue  |
+| CNI                        | Flannel VXLAN or `wireguard-native`                                                                                                        | Flannel or Cilium                                                                                 | Upstream broader; local covers encrypted Flannel                   |
+| Network encryption         | Opt-in Flannel `wireguard-native`                                                                                                          | Supported                                                                                         | Broad parity for Flannel                                           |
+| Cilium egress              | Not supported                                                                                                                              | Supported                                                                                         | Intentionally deferred with Cilium                                 |
+| External datastore         | Embedded SQLite/etcd according to topology                                                                                                 | etcd, PostgreSQL, and MySQL options                                                               | Upstream broader                                                   |
+| Embedded etcd snapshots    | Scheduled, retained, optional S3-compatible replication                                                                                    | Supported, including S3                                                                           | Broad parity                                                       |
+| Restore                    | First-class validated/resumable implementation and destructive harness; live proof pending                                                 | No complete first-class restore flow; [#659](https://github.com/vitobotta/hetzner-k3s/issues/659) | Local implementation advantage; proof gate remains                 |
+| HCCM                       | Installed and version-pinned                                                                                                               | Optional installation                                                                             | Local is opinionated                                               |
+| CSI                        | Installed and version-pinned                                                                                                               | Optional installation                                                                             | Local is opinionated                                               |
+| System Upgrade Controller  | Installed and version-pinned                                                                                                               | Optional installation                                                                             | Local is opinionated                                               |
+| Patch upgrades             | Two rolling plans, maintenance window, control planes before workers                                                                       | Upgrade command and SUC integration                                                               | Local automation is simpler but needs complete live validation     |
+| Minor upgrades             | Explicit channel change with downgrade/skipped-minor rejection                                                                             | Explicit upgrade workflow                                                                         | Both require operator intent                                       |
+| Traefik and ServiceLB      | Optional bundled Traefik; ServiceLB disabled; private backend targets retained without publishing the private LB ingress                   | Configurable toggles                                                                              | Upstream more flexible; local public DNS is safer by default       |
+| metrics-server             | K3s default retained                                                                                                                       | Configurable toggle                                                                               | Upstream more flexible                                             |
+| Registry mirrors           | Not exposed                                                                                                                                | Supported                                                                                         | Deferred                                                           |
+| Private registries         | Not exposed                                                                                                                                | Supported                                                                                         | Deferred                                                           |
+| Package installation       | Fixed bootstrap only                                                                                                                       | Custom packages supported                                                                         | Deliberately omitted                                               |
+| Bootstrap hooks            | No arbitrary hooks                                                                                                                         | Supported                                                                                         | Deliberately omitted                                               |
+| Component arguments        | Fixed opinionated arguments                                                                                                                | Broad component argument customization                                                            | Deliberately omitted                                               |
+| API hostname               | Load-balancer endpoint and generated kubeconfig contexts                                                                                   | Custom API hostname supported                                                                     | Upstream broader                                                   |
+| Placement groups           | Control-plane placement is managed internally                                                                                              | Configurable placement groups                                                                     | Upstream broader                                                   |
+| Large-cluster tuning       | No explicit large-cluster profile                                                                                                          | Supported                                                                                         | Deferred until measured                                            |
+| SSH keys                   | Per-server deterministic Ed25519 deploy key is a separate resource committed before server creation                                        | Shared generated or existing SSH key                                                              | Local removes callback-local credential leakage                    |
+| Kubeconfig                 | Written under `.alchemy/kubeconfigs/hetzner`, mode `0600`, without mutating the user's default config                                      | Written mode `0600`; historical merge behavior was fixed                                          | Local ownership is cleaner                                         |
+| Deletion protection        | Enabled by default and must be explicitly disabled before destroy                                                                          | CLI confirmation/lifecycle controls                                                               | Local stronger declarative guard                                   |
+| Resource ownership         | Exact Alchemy resources with provider IDs and deletion graph                                                                               | CLI labels/config-derived cleanup                                                                 | Local advantage                                                    |
+| Kubernetes composition     | Implements `Kubernetes.ClusterLike`; connection attributes remain available to consumers during mutable updates                            | Produces kubeconfig for ordinary tooling                                                          | Local advantage inside Alchemy                                     |
+| ExternalDNS                | Zone-scoped Cloudflare add-on with Secret-backed token and TXT ownership                                                                   | Not a core capability                                                                             | Separate add-on by design                                          |
+| cert-manager/Let's Encrypt | Pinned generic cert-manager plus exact-zone Cloudflare DNS-01 issuer add-ons                                                               | Not a core capability                                                                             | Separate add-ons by design                                         |
+| OTEL/Parseable             | S3-backed Parseable and ClusterIP-only OTLP/HTTP collector add-ons implemented                                                             | Not a core capability                                                                             | Separate add-ons by design                                         |
 
 ## Security-critical comparison
 
@@ -267,18 +272,36 @@ Upstream cleanup is necessarily reconstructed by the CLI from its configuration
 and labels. It is more flexible, but historical issues show that broad cleanup
 logic needs substantial defensive code.
 
+The useful upstream recovery pattern is simpler than a local transaction log:
+its
+[instance creation path](https://github.com/vitobotta/hetzner-k3s/blob/4e293f47861aaf88bc4993b84b4687775c5277cf/src/hetzner/instance/create.cr)
+computes a stable name, searches Hetzner first, and creates only when the server
+is absent. The local machine provider now uses the same cloud-as-journal
+principle, with stricter Alchemy and generation labels, exact postcondition
+checks, and deletion protection. Alchemy state is the graph scheduler; Hetzner's
+observed server is the authoritative journal for accepted machine actions.
+
+This deliberately replaces, rather than migrates, the former generic
+`Hetzner.Server` composition. That resource could create an internal deploy key
+and a server inside one provider callback, while Alchemy persisted only the
+terminal output. A process death could therefore leave a server/key pair that
+the next run could neither authenticate to nor safely identify. The new resource
+has no hidden credential or compatibility branch. No Alchemy core patch is
+required: this provider owns the machine action and observation loop directly.
+
 ### Worker replacement
 
-The local provider gives each server a unique ID-derived Kubernetes node name.
-For a worker replacement it:
+The local provider gives each physical machine a stable Hetzner name and each
+server generation a unique ID-derived Kubernetes node name. For a worker
+replacement it:
 
-1. Creates the new server.
-2. Waits for SSH and Kubernetes Ready.
-3. Drains the old node.
-4. Deletes the old server.
+1. Re-observes and removes the old fixed-name machine.
+2. Creates or resumes the declared generation under the same physical name.
+3. Repeats K3s installation safely and waits for Kubernetes Ready.
+4. Presence-checks and removes the obsolete Kubernetes Node.
 
-If readiness fails, both servers remain and the deployment fails safely. This
-addresses the duplicate-hostname class in
+If readiness fails, the replacement machine and obsolete Kubernetes Node remain
+observable for the next rerun. This addresses the duplicate-hostname class in
 [#390](https://github.com/vitobotta/hetzner-k3s/issues/390) and the failed
 replacement class in
 [#650](https://github.com/vitobotta/hetzner-k3s/issues/650).
@@ -330,8 +353,9 @@ indefinite waits reported in upstream
 [#509](https://github.com/vitobotta/hetzner-k3s/issues/509), and
 [#522](https://github.com/vitobotta/hetzner-k3s/issues/522).
 
-Failure injection is still incomplete, so the timeout design is stronger than
-the current evidence.
+Unit failure injection now covers every Hetzner machine mutation plus the K3s
+install/provider-ID/obsolete-node boundaries. Live process-kill coverage is
+still incomplete, so production evidence remains weaker than the design.
 
 ## Upstream issue mapping
 
@@ -344,30 +368,30 @@ Status meanings:
 - **Fail-safe:** the unsafe action is refused instead of implemented.
 - **N/A:** the feature that caused the issue is deliberately absent.
 
-| Upstream issue                                                                                                                                                                                                                                     | Theme                                            | Local status                 | Local analysis                                                                           |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ---------------------------- | ---------------------------------------------------------------------------------------- |
-| [#15](https://github.com/vitobotta/hetzner-k3s/issues/15)                                                                                                                                                                                          | Destructive project deletion                     | Solved                       | Exact Alchemy ownership and default deletion protection avoid broad project cleanup      |
-| [#20](https://github.com/vitobotta/hetzner-k3s/issues/20)                                                                                                                                                                                          | Kubeconfig file permissions                      | Solved                       | Generated file is mode `0600`                                                            |
-| [#76](https://github.com/vitobotta/hetzner-k3s/issues/76)                                                                                                                                                                                          | Kubernetes API allowlist                         | Partial                      | Direct masters are restricted; mandatory public load balancer remains reachable          |
-| [#107](https://github.com/vitobotta/hetzner-k3s/issues/107)                                                                                                                                                                                        | Overwriting the user's kubeconfig                | Solved                       | Dedicated Alchemy kubeconfig; no mutation of `~/.kube/config`                            |
-| [#184](https://github.com/vitobotta/hetzner-k3s/issues/184), [#320](https://github.com/vitobotta/hetzner-k3s/issues/320), [#509](https://github.com/vitobotta/hetzner-k3s/issues/509), [#522](https://github.com/vitobotta/hetzner-k3s/issues/522) | Commands or provisioning hang indefinitely       | Solved for implemented paths | Waits are bounded and every recovery checkpoint has failure injection                    |
-| [#311](https://github.com/vitobotta/hetzner-k3s/issues/311)                                                                                                                                                                                        | Recreating the first master destroys the cluster | Implemented, proof pending   | Unconfigured replacement is refused; explicit validated restore prevents empty bootstrap |
-| [#390](https://github.com/vitobotta/hetzner-k3s/issues/390)                                                                                                                                                                                        | Duplicate hostname during replacement            | Solved                       | Every server receives a unique ID-derived node name                                      |
-| [#474](https://github.com/vitobotta/hetzner-k3s/issues/474)                                                                                                                                                                                        | Firewall/NodePort exposure                       | Solved for default surface   | NodePorts are not opened publicly                                                        |
-| [#595](https://github.com/vitobotta/hetzner-k3s/issues/595), [#736](https://github.com/vitobotta/hetzner-k3s/issues/736)                                                                                                                           | sshd hardening                                   | Solved                       | Explicit drop-in disables password auth, forwarding, and tunnels                         |
-| [#598](https://github.com/vitobotta/hetzner-k3s/issues/598)                                                                                                                                                                                        | Custom SSH port handling                         | N/A                          | Local provider does not expose custom SSH ports                                          |
-| [#607](https://github.com/vitobotta/hetzner-k3s/issues/607)                                                                                                                                                                                        | Volume encryption                                | Missing                      | No local volume-encryption implementation                                                |
-| [#629](https://github.com/vitobotta/hetzner-k3s/issues/629)                                                                                                                                                                                        | SSH available before cloud-init completes        | Solved                       | Strict-key SSH is followed by bounded cloud-init completion/status validation            |
-| [#650](https://github.com/vitobotta/hetzner-k3s/issues/650)                                                                                                                                                                                        | Worker replacement failure                       | Solved for tested path       | Create-first replacement and live E2E passed                                             |
-| [#652](https://github.com/vitobotta/hetzner-k3s/issues/652)                                                                                                                                                                                        | Cloud token rotation                             | Implemented                  | Secret changes explicitly restart and wait for HCCM/CSI                                  |
-| [#659](https://github.com/vitobotta/hetzner-k3s/issues/659)                                                                                                                                                                                        | Cluster restore                                  | Implemented, proof pending   | First-class single/HA path and destructive E2E harness; live run still required          |
-| [#678](https://github.com/vitobotta/hetzner-k3s/issues/678)                                                                                                                                                                                        | Master server-type rotation                      | Missing by design            | Control-plane topology is immutable until recovery is proven                             |
-| [#701](https://github.com/vitobotta/hetzner-k3s/issues/701)                                                                                                                                                                                        | Mutable autoscaler manifest                      | N/A/Partial class            | Autoscaler is absent; local remote manifests are version-tagged but not content-hashed   |
-| [#707](https://github.com/vitobotta/hetzner-k3s/issues/707)                                                                                                                                                                                        | Conflicting token sources/precedence             | Solved structurally          | One ambient Alchemy Hetzner credential; no cluster token property                        |
-| [#716](https://github.com/vitobotta/hetzner-k3s/issues/716)                                                                                                                                                                                        | Hetzner token embedded in host firewall script   | Exact issue avoided          | No host firewall script; tokens still exist in Kubernetes Secrets and Alchemy state      |
-| [#750](https://github.com/vitobotta/hetzner-k3s/issues/750), [#756](https://github.com/vitobotta/hetzner-k3s/issues/756), [#769](https://github.com/vitobotta/hetzner-k3s/issues/769)                                                              | Upgrade selectors, ordering, or concurrency      | Partial                      | Local plans are simpler, but full live upgrade validation is incomplete                  |
-| [#753](https://github.com/vitobotta/hetzner-k3s/issues/753), [#754](https://github.com/vitobotta/hetzner-k3s/issues/754), [#765](https://github.com/vitobotta/hetzner-k3s/issues/765)                                                              | Autoscaler drift and SSH-key behavior            | N/A                          | Autoscaling is intentionally absent                                                      |
-| [#773](https://github.com/vitobotta/hetzner-k3s/issues/773)                                                                                                                                                                                        | Declarative static worker-pool removal           | Solved                       | Local scale-down E2E passed                                                              |
+| Upstream issue                                                                                                                                                                                                                                     | Theme                                            | Local status                        | Local analysis                                                                           |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ----------------------------------- | ---------------------------------------------------------------------------------------- |
+| [#15](https://github.com/vitobotta/hetzner-k3s/issues/15)                                                                                                                                                                                          | Destructive project deletion                     | Solved                              | Exact Alchemy ownership and default deletion protection avoid broad project cleanup      |
+| [#20](https://github.com/vitobotta/hetzner-k3s/issues/20)                                                                                                                                                                                          | Kubeconfig file permissions                      | Solved                              | Generated file is mode `0600`                                                            |
+| [#76](https://github.com/vitobotta/hetzner-k3s/issues/76)                                                                                                                                                                                          | Kubernetes API allowlist                         | Partial                             | Direct masters are restricted; mandatory public load balancer remains reachable          |
+| [#107](https://github.com/vitobotta/hetzner-k3s/issues/107)                                                                                                                                                                                        | Overwriting the user's kubeconfig                | Solved                              | Dedicated Alchemy kubeconfig; no mutation of `~/.kube/config`                            |
+| [#184](https://github.com/vitobotta/hetzner-k3s/issues/184), [#320](https://github.com/vitobotta/hetzner-k3s/issues/320), [#509](https://github.com/vitobotta/hetzner-k3s/issues/509), [#522](https://github.com/vitobotta/hetzner-k3s/issues/522) | Commands or provisioning hang indefinitely       | Solved for implemented paths        | Waits are bounded and every recovery checkpoint has failure injection                    |
+| [#311](https://github.com/vitobotta/hetzner-k3s/issues/311)                                                                                                                                                                                        | Recreating the first master destroys the cluster | Implemented, proof pending          | Unconfigured replacement is refused; explicit validated restore prevents empty bootstrap |
+| [#390](https://github.com/vitobotta/hetzner-k3s/issues/390)                                                                                                                                                                                        | Duplicate hostname during replacement            | Solved                              | Every server receives a unique ID-derived node name                                      |
+| [#474](https://github.com/vitobotta/hetzner-k3s/issues/474)                                                                                                                                                                                        | Firewall/NodePort exposure                       | Solved for default surface          | NodePorts are not opened publicly                                                        |
+| [#595](https://github.com/vitobotta/hetzner-k3s/issues/595), [#736](https://github.com/vitobotta/hetzner-k3s/issues/736)                                                                                                                           | sshd hardening                                   | Solved                              | Explicit drop-in disables password auth, forwarding, and tunnels                         |
+| [#598](https://github.com/vitobotta/hetzner-k3s/issues/598)                                                                                                                                                                                        | Custom SSH port handling                         | N/A                                 | Local provider does not expose custom SSH ports                                          |
+| [#607](https://github.com/vitobotta/hetzner-k3s/issues/607)                                                                                                                                                                                        | Volume encryption                                | Missing                             | No local volume-encryption implementation                                                |
+| [#629](https://github.com/vitobotta/hetzner-k3s/issues/629)                                                                                                                                                                                        | SSH available before cloud-init completes        | Solved                              | Strict-key SSH is followed by bounded cloud-init completion/status validation            |
+| [#650](https://github.com/vitobotta/hetzner-k3s/issues/650)                                                                                                                                                                                        | Worker replacement failure                       | Implemented, new live proof pending | Stable-name machine transaction and interrupted-rerun unit tests converge                |
+| [#652](https://github.com/vitobotta/hetzner-k3s/issues/652)                                                                                                                                                                                        | Cloud token rotation                             | Implemented                         | Secret changes explicitly restart and wait for HCCM/CSI                                  |
+| [#659](https://github.com/vitobotta/hetzner-k3s/issues/659)                                                                                                                                                                                        | Cluster restore                                  | Implemented, proof pending          | First-class single/HA path and destructive E2E harness; live run still required          |
+| [#678](https://github.com/vitobotta/hetzner-k3s/issues/678)                                                                                                                                                                                        | Master server-type rotation                      | Missing by design                   | Control-plane topology is immutable until recovery is proven                             |
+| [#701](https://github.com/vitobotta/hetzner-k3s/issues/701)                                                                                                                                                                                        | Mutable autoscaler manifest                      | N/A/Partial class                   | Autoscaler is absent; local remote manifests are version-tagged but not content-hashed   |
+| [#707](https://github.com/vitobotta/hetzner-k3s/issues/707)                                                                                                                                                                                        | Conflicting token sources/precedence             | Solved structurally                 | One ambient Alchemy Hetzner credential; no cluster token property                        |
+| [#716](https://github.com/vitobotta/hetzner-k3s/issues/716)                                                                                                                                                                                        | Hetzner token embedded in host firewall script   | Exact issue avoided                 | No host firewall script; tokens still exist in Kubernetes Secrets and Alchemy state      |
+| [#750](https://github.com/vitobotta/hetzner-k3s/issues/750), [#756](https://github.com/vitobotta/hetzner-k3s/issues/756), [#769](https://github.com/vitobotta/hetzner-k3s/issues/769)                                                              | Upgrade selectors, ordering, or concurrency      | Partial                             | Local plans are simpler, but full live upgrade validation is incomplete                  |
+| [#753](https://github.com/vitobotta/hetzner-k3s/issues/753), [#754](https://github.com/vitobotta/hetzner-k3s/issues/754), [#765](https://github.com/vitobotta/hetzner-k3s/issues/765)                                                              | Autoscaler drift and SSH-key behavior            | N/A                                 | Autoscaling is intentionally absent                                                      |
+| [#773](https://github.com/vitobotta/hetzner-k3s/issues/773)                                                                                                                                                                                        | Declarative static worker-pool removal           | Solved                              | Local scale-down E2E passed                                                              |
 
 ## Pull-request history signals
 
@@ -403,15 +427,18 @@ correctness or security work:
 
 ### Automated checks
 
-`npm run release:check` passed after the Phase 8 implementation. It covered:
+`mise run publish:dry-run` passed for 0.1.0-alpha.6 after incorporating the live
+alpha.5 findings. It performed a clean install with no Alchemy patch and
+covered:
 
 - TypeScript type checking.
 - ESLint and Prettier.
-- 81 tests across 17 files.
+- 113 tests across 22 files.
 - Package builds.
 - Package-content checks.
 - Production dependency audit with zero vulnerabilities.
 - Rendering every pinned add-on chart image.
+- Dry-run packing of all four synchronized public packages.
 
 The current main CI run was passing:
 [GitHub Actions run](https://github.com/toolbar23/alchemy-k3s/actions/runs/32931545312).
@@ -420,6 +447,40 @@ The local CI is broader than the inspected upstream workflow: it runs audit and
 the full check command, while the upstream workflow primarily compiles release
 binaries. The local npm release uses OIDC provenance, and its checkout, Node,
 and Helm Actions are now pinned to full commit SHAs.
+
+### Live alpha.5 findings (2026-08-27)
+
+The Acme production rehearsal established both positive evidence and four
+specific regressions:
+
+- Persistent SSH-key resources were committed before server creation. Strict
+  host verification worked, a retry reused the same machines and keys, and the
+  successful 68-resource destroy removed owned keys while retaining the adopted
+  Cloudflare zone.
+- Workers could register after install but the immediate provider-ID API patch
+  raced Node creation. The patch is now removed because the kubelet already
+  receives `provider-id=hcloud://<server-id>`; reconciliation retries Node
+  lookup through `NotFound` and waits for Ready.
+- Channel resolution followed the K3s redirect to GitHub, making provisioning
+  depend on GitHub IPv4 reachability. It now parses the exact version from the
+  manual redirect response and retries only against the K3s channel service.
+- HCCM published Traefik's private address beside its public address. A K3s
+  `HelmChartConfig` now sets Hetzner's `disable-private-ingress` annotation
+  before startup while HCCM keeps private backend routing enabled.
+- During mutable cluster updates Alchemy exposes only provider-declared stable
+  attributes to downstream planning. The provider omitted `connection`; it now
+  marks `connection` and `endpoint` stable, with an end-to-end planner
+  regression using a downstream Kubernetes consumer. An intermediate Acme plan
+  deliberately changed the snapshot endpoint representation and also succeeded
+  against the local alpha.6 build: 20 creates, 22 updates, and 27 noops. The
+  final consumer instead adapts its single canonical URL to K3s's hostname form
+  at the call boundary; published alpha.5 then plans 20 intended application
+  creates, 49 noops, and no cluster churn while alpha.6 awaits publication.
+
+The large downstream failure lists observed during these runs were dependency
+cancellations, not independent resource failures. Diagnosis should start at the
+first root failure rather than treating every cancelled dependent as a separate
+incident.
 
 ### Live Hetzner E2E
 
@@ -487,6 +548,28 @@ timings. Live single/HA restore remains a release proof gate until it is run
 with the separately retained S3 bucket and encrypted locked state; this report
 does not promote implemented test code into unearned production evidence.
 
+### Crash-convergence update (2026-08-27)
+
+| Previous reliability gap                                                 | Current implementation                                                                                                |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| Deploy key and server were side effects of one uncheckpointed callback   | The deterministic deploy key is an independent prerequisite resource; machine creation receives only its persisted ID |
+| A stale Alchemy replacement could hide a deleted physical server         | Machine diff always re-observes by ID/name and requests a delete-first replacement when absent                        |
+| A lost create/action response could cause duplicates or manual cleanup   | Stable names, conflict re-observation, action postconditions, and exact generation ownership make reruns convergent   |
+| Fixed-name replacement accidentally used create-first semantics          | Every create-only machine change returns `deleteFirst: true`                                                          |
+| HA rejoin could accumulate timestamped database moves after interruption | One peer-local prepared/complete transaction retains one original backup and discards only partial rejoin state       |
+| Restore phase did not bind the selected snapshot across reruns           | The checkpoint atomically persists snapshot identity and phase and refuses a mismatch                                 |
+| Node drain failed when an earlier run already deleted the object         | Drain/delete first checks presence and is safe to repeat                                                              |
+| Worker provider-ID patch raced registration                              | Provider ID is supplied at kubelet start; reconciliation waits for registration and Ready instead of patching         |
+| Channel resolution required GitHub connectivity                          | Manual redirect parsing resolves the patch at the K3s channel service with retry/backoff                              |
+| Traefik exposed a private ingress address to ExternalDNS                 | Pre-start HelmChartConfig suppresses private ingress status and retains private backend targets                       |
+| Mutable cluster updates hid the downstream connection                    | Connection and endpoint are stable provider attributes, covered by an Alchemy planner regression                      |
+
+The unit fault matrix proves convergence after all machine API mutation
+boundaries and the main worker replacement boundaries. The remaining release
+gate is a disposable live cluster matrix that terminates the deploy process
+after accepted Hetzner actions and audits both servers and SSH keys after the
+rerun.
+
 ### P0: before recommending production use
 
 1. Run the new Secret-encryption and interrupted-migration checks against live
@@ -495,6 +578,8 @@ does not promote implemented test code into unearned production evidence.
 3. Record every failed E2E phase and error in machine and human reports.
 4. Prove single-node and HA S3 snapshot restore with the implemented destructive
    harness.
+5. Run the live process-kill convergence matrix for create, replacement, and
+   destroy; audit exact Hetzner server and SSH-key counts after every rerun.
 
 ### P1: security and operational hardening
 

@@ -41,6 +41,20 @@ export const K3S_INSTALL_COMMIT = "33c19246e5c14cac5a4d839b2b8d5773f7173f46";
 export const K3S_INSTALL_SHA256 =
   "ed01f89fd977bf20ac1516bbebf8370bf3ddbaa55dac8aba610956a4c78cc00b";
 
+export type NodeMutation =
+  | "upgrade-plan-reset"
+  | "secrets-encryption-prepare"
+  | "bootstrap-rejoin-prepare"
+  | "k3s-install"
+  | "etcd-recovery"
+  | "bootstrap-rejoin-complete"
+  | "old-node-drain"
+  | "node-uninstall";
+
+interface NodeProviderOptions {
+  afterMutation?: (mutation: NodeMutation) => Promise<void>;
+}
+
 const secretValue = (value: Redacted.Redacted<string>): string =>
   Redacted.value(value);
 
@@ -52,16 +66,6 @@ const shellQuote = (value: string): string => {
 export const nodeName = (logicalName: string, serverId: number): string => {
   const suffix = `-${serverId}`;
   return `${logicalName.slice(0, 63 - suffix.length).replace(/-$/g, "")}${suffix}`;
-};
-
-export const providerIdPatchCommand = (
-  name: string,
-  serverId: number,
-): string => {
-  const payload = JSON.stringify({
-    spec: { providerID: `hcloud://${serverId}` },
-  });
-  return `k3s kubectl patch node ${JSON.stringify(name)} --type=merge -p ${JSON.stringify(payload)}`;
 };
 
 const installArguments = (
@@ -215,7 +219,24 @@ rules:
 ALCHEMY_AUDIT_POLICY
 `
     : ""
-}private_interface=$(ip -o -4 addr show | awk -v address=${shellQuote(privateIp)} 'index($4, address "/") == 1 { print $2; exit }')
+}${
+    props.initialServer && props.k3s.addons.traefik
+      ? `install -d -m 0700 /var/lib/rancher/k3s/server/manifests
+cat > /var/lib/rancher/k3s/server/manifests/traefik-config.yaml <<'ALCHEMY_TRAEFIK_CONFIG'
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    service:
+      annotations:
+        load-balancer.hetzner.cloud/disable-private-ingress: "true"
+ALCHEMY_TRAEFIK_CONFIG
+`
+      : ""
+  }private_interface=$(ip -o -4 addr show | awk -v address=${shellQuote(privateIp)} 'index($4, address "/") == 1 { print $2; exit }')
 if [ -z "$private_interface" ]; then
   echo "Unable to find the interface for private IP ${privateIp}" >&2
   exit 1
@@ -231,7 +252,57 @@ ${props.role === "agent" && !skipStart ? "systemctl restart --no-block k3s-agent
 `;
 };
 
-const waitForNode = async (
+export const buildBootstrapRejoinPreparationScript = (
+  bootstrapServerId: number,
+): string => {
+  const desired = String(bootstrapServerId);
+  return `set -euo pipefail
+state=/var/lib/rancher/k3s/.alchemy-bootstrap-rejoin
+backup=/var/lib/rancher/k3s/server/db.alchemy-pre-rejoin-${desired}
+recorded_bootstrap=$(sed -n 's/^bootstrap=//p' "$state" 2>/dev/null || true)
+phase=$(sed -n 's/^phase=//p' "$state" 2>/dev/null || true)
+if [ -f "$state" ] && { [ -z "$recorded_bootstrap" ] || { [ "$phase" != prepared ] && [ "$phase" != complete ]; }; }; then
+  echo "Bootstrap rejoin transaction marker is invalid" >&2
+  exit 1
+fi
+if [ -n "$recorded_bootstrap" ] && [ "$recorded_bootstrap" != ${shellQuote(desired)} ]; then
+  echo "A different bootstrap rejoin transaction is already recorded" >&2
+  exit 1
+fi
+if [ "$phase" != complete ]; then
+  systemctl stop k3s 2>/dev/null || true
+  if [ ! -e "$backup" ] && [ -d /var/lib/rancher/k3s/server/db ]; then
+    mv /var/lib/rancher/k3s/server/db "$backup"
+  elif [ -e "$backup" ]; then
+    rm -rf /var/lib/rancher/k3s/server/db
+  fi
+  printf 'bootstrap=%s\nphase=prepared\n' ${shellQuote(desired)} > "$state.tmp"
+  mv "$state.tmp" "$state"
+fi
+`;
+};
+
+export const buildBootstrapRejoinCompletionScript = (
+  bootstrapServerId: number,
+): string => {
+  const desired = String(bootstrapServerId);
+  return `set -euo pipefail
+state=/var/lib/rancher/k3s/.alchemy-bootstrap-rejoin
+recorded_bootstrap=$(sed -n 's/^bootstrap=//p' "$state" 2>/dev/null || true)
+phase=$(sed -n 's/^phase=//p' "$state" 2>/dev/null || true)
+if [ "$recorded_bootstrap" != ${shellQuote(desired)} ] || [ "$phase" != prepared ]; then
+  if [ "$recorded_bootstrap" = ${shellQuote(desired)} ] && [ "$phase" = complete ]; then
+    exit 0
+  fi
+  echo "Bootstrap rejoin transaction is not prepared for completion" >&2
+  exit 1
+fi
+printf 'bootstrap=%s\nphase=complete\n' ${shellQuote(desired)} > "$state.tmp"
+mv "$state.tmp" "$state"
+`;
+};
+
+export const waitForNode = async (
   admin: ServerReference,
   name: string,
 ): Promise<void> => {
@@ -260,7 +331,7 @@ const drainNode = async (
 ): Promise<void> => {
   await ssh(
     admin,
-    `k3s kubectl drain ${JSON.stringify(name)} --ignore-daemonsets --delete-emptydir-data --timeout=10m && k3s kubectl delete node ${JSON.stringify(name)} --ignore-not-found`,
+    `if k3s kubectl get node ${JSON.stringify(name)} >/dev/null 2>&1; then k3s kubectl drain ${JSON.stringify(name)} --ignore-daemonsets --delete-emptydir-data --timeout=10m && k3s kubectl delete node ${JSON.stringify(name)} --ignore-not-found; fi`,
     12 * 60_000,
   );
 };
@@ -318,25 +389,26 @@ export const createNodeReconcileLimiter = () => {
   };
 };
 
-export const NodeProvider = () => {
+export const NodeProvider = (options: NodeProviderOptions = {}) => {
   const limitReconcile = createNodeReconcileLimiter();
   return Provider.succeed(Node, {
     stables: ["logicalName", "role"],
     read: ({ olds, output }) =>
       Effect.tryPromise({
         try: async () => {
-          if (olds.server === undefined) return output;
+          if (olds.server === undefined) {
+            if (output === undefined) return undefined;
+            throw new Error(
+              "Persisted K3s node output has no resolved server properties; greenfield state must never trust an unobservable node",
+            );
+          }
           let observed: NodeReference | undefined;
           try {
             observed = await observe(olds);
           } catch (error) {
-            // Pre-hardening state has no pinned host key, so it cannot be
-            // inspected safely. Preserve that state just long enough for the
-            // create-first server replacement to reconcile every legacy node.
-            if (
-              output !== undefined &&
-              (olds.initialServer || olds.server.hostPublicKey === undefined)
-            ) {
+            // The committed initial token and cluster ID are the recovery root
+            // when a deliberately replaced control plane no longer answers.
+            if (output !== undefined && olds.initialServer) {
               return output;
             }
             throw error;
@@ -356,7 +428,10 @@ export const NodeProvider = () => {
           };
         },
         catch: (cause) =>
-          new Error(`Unable to inspect K3s node ${olds.name}`, { cause }),
+          new Error(
+            `Unable to inspect K3s node ${olds.name ?? output?.logicalName ?? "unknown"}: ${cause instanceof Error ? cause.message : String(cause)}`,
+            { cause },
+          ),
       }),
     diff: ({ news, output }) =>
       Effect.sync(() => {
@@ -427,6 +502,7 @@ export const NodeProvider = () => {
               server,
               "k3s kubectl delete plan -n system-upgrade k3s-agent k3s-server --ignore-not-found",
             );
+            await options.afterMutation?.("upgrade-plan-reset");
           }
           const privateIp = await remotePrivateIp(server, news.networkCidr);
           const desiredName = nodeName(news.name, news.server.serverId);
@@ -451,23 +527,20 @@ export const NodeProvider = () => {
               news.secretsEncryption.migrateExisting,
               news.secretsEncryption.failureInjection,
             );
+            await options.afterMutation?.("secrets-encryption-prepare");
           }
           const bootstrapReplaced =
             !news.initialServer &&
             news.role === "server" &&
-            installedVersion !== undefined &&
+            output !== undefined &&
             olds?.bootstrap?.serverId !== undefined &&
             olds.bootstrap.serverId !== news.bootstrap?.serverId;
           if (bootstrapReplaced) {
             await sshScript(
               server,
-              `set -euo pipefail
-systemctl stop k3s
-if [ -d /var/lib/rancher/k3s/server/db ]; then
-  mv /var/lib/rancher/k3s/server/db /var/lib/rancher/k3s/server/db.alchemy-pre-rejoin-$(date +%s)
-fi
-`,
+              buildBootstrapRejoinPreparationScript(news.bootstrap!.serverId),
             );
+            await options.afterMutation?.("bootstrap-rejoin-prepare");
           }
           await sshScript(
             server,
@@ -479,6 +552,7 @@ fi
             ),
             15 * 60_000,
           );
+          await options.afterMutation?.("k3s-install");
           let recovery:
             | {
                 restoredSnapshot: string;
@@ -510,6 +584,7 @@ fi
               ),
               30 * 60_000,
             );
+            await options.afterMutation?.("etcd-recovery");
             recovery = {
               restoredSnapshot: selected.name,
               snapshotCreatedAt: selected.createdAt.toISOString(),
@@ -517,8 +592,14 @@ fi
             };
           }
           const admin = news.initialServer ? server : news.bootstrap!.server;
-          await ssh(admin, providerIdPatchCommand(desiredName, news.server.id));
           await waitForNode(admin, desiredName);
+          if (bootstrapReplaced) {
+            await sshScript(
+              server,
+              buildBootstrapRejoinCompletionScript(news.bootstrap!.serverId),
+            );
+            await options.afterMutation?.("bootstrap-rejoin-complete");
+          }
           if (news.role === "server") {
             const encryption = await inspectSecretsEncryption(server);
             const migrationPending =
@@ -543,6 +624,7 @@ fi
           }
           if (replacingServer && output !== undefined && !restoringInitial) {
             await drainNode(admin, output.name);
+            await options.afterMutation?.("old-node-drain");
           }
           const token = news.initialServer
             ? Redacted.make(
@@ -597,6 +679,7 @@ fi
             `command -v ${uninstall} >/dev/null && ${uninstall} || true`,
             10 * 60_000,
           ).catch(() => undefined);
+          await options.afterMutation?.("node-uninstall");
         },
         catch: (cause) =>
           new Error(`Failed to remove K3s node ${output.name}`, { cause }),

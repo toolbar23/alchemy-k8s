@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import * as Redacted from "effect/Redacted";
 import { describe, expect, it } from "vitest";
 import { normalizeK3sDefinition } from "../../shared/src/definition.ts";
@@ -6,6 +7,7 @@ import {
   hasObservableClusterState,
 } from "../src/cluster-state.ts";
 import {
+  physicalMachineName,
   productionStateWarning,
   serverReferenceWithSshIdentities,
 } from "../src/cluster.ts";
@@ -17,12 +19,13 @@ import {
 } from "../src/manifests.ts";
 import {
   buildInstallScript,
+  buildBootstrapRejoinCompletionScript,
+  buildBootstrapRejoinPreparationScript,
   createNodeReconcileLimiter,
   K3S_INSTALL_SHA256,
   Node,
   NodeProvider,
   nodeName,
-  providerIdPatchCommand,
 } from "../src/node.ts";
 import * as Effect from "effect/Effect";
 import type {
@@ -49,6 +52,15 @@ const definition = normalizeK3sDefinition({
 });
 
 describe("Hetzner bootstrap", () => {
+  it("keeps long physical names valid and collision-resistant", () => {
+    const first = physicalMachineName("a".repeat(63), "general", 1);
+    const second = physicalMachineName("a".repeat(63), "general", 2);
+
+    expect(first).toHaveLength(63);
+    expect(second).toHaveLength(63);
+    expect(first).not.toBe(second);
+  });
+
   it("pins System Upgrade Controller plans to the chosen minor and window", () => {
     const plans = systemUpgradePlans(definition);
     expect(plans).toContain("channels/v1.35");
@@ -130,7 +142,14 @@ describe("Hetzner bootstrap", () => {
       role: "server",
       initialServer: true,
       bootstrapRevision: 2,
-      server: { id: 1, serverId: 1, name: "cp", ipv4: "203.0.113.1" },
+      server: {
+        id: 1,
+        serverId: 1,
+        name: "cp",
+        ipv4: "203.0.113.1",
+        privateKey: Redacted.make("private"),
+        hostPublicKey: "ssh-ed25519 host",
+      },
       k3s: definition,
       networkCidr: "10.0.0.0/16",
       apiEndpoint: "203.0.113.2",
@@ -164,6 +183,9 @@ describe("Hetzner bootstrap", () => {
     expect(script).toContain("awk -v address='10.0.0.2'");
     expect(script).toContain(`'--flannel-iface' "$private_interface"`);
     expect(script).toContain("'--kubelet-arg' 'provider-id=hcloud://1'");
+    expect(script).toContain(
+      'load-balancer.hetzner.cloud/disable-private-ingress: "true"',
+    );
     expect(script).toContain("'--etcd-s3-bucket-lookup-type' 'path'");
     expect(script).toContain("'--etcd-s3-session-token' 'session'");
     expect(script).toContain("'--secrets-encryption'");
@@ -173,6 +195,7 @@ describe("Hetzner bootstrap", () => {
     expect(script).toContain(K3S_INSTALL_SHA256);
     expect(script).toContain("sh \"$install_script\" 'server'");
     expect(script).not.toContain('sh "$install_script" --');
+    expect(spawnSync("bash", ["-n"], { input: script }).status).toBe(0);
   });
 
   it("starts agents without waiting for the external cloud controller", () => {
@@ -182,7 +205,14 @@ describe("Hetzner bootstrap", () => {
         role: "agent",
         initialServer: false,
         bootstrapRevision: 2,
-        server: { id: 2, serverId: 2, name: "worker", ipv4: "203.0.113.2" },
+        server: {
+          id: 2,
+          serverId: 2,
+          name: "worker",
+          ipv4: "203.0.113.2",
+          privateKey: Redacted.make("private"),
+          hostPublicKey: "ssh-ed25519 host",
+        },
         bootstrap: {
           logicalName: "test-cp-1",
           name: "test-cp-1",
@@ -191,7 +221,14 @@ describe("Hetzner bootstrap", () => {
           privateIp: "10.0.0.2",
           version: "v1.35.7+k3s1",
           token: Redacted.make("token"),
-          server: { id: 1, serverId: 1, name: "cp", ipv4: "203.0.113.1" },
+          server: {
+            id: 1,
+            serverId: 1,
+            name: "cp",
+            ipv4: "203.0.113.1",
+            privateKey: Redacted.make("private"),
+            hostPublicKey: "ssh-ed25519 host",
+          },
         },
         k3s: definition,
         networkCidr: "10.0.0.0/16",
@@ -300,39 +337,39 @@ Active  Key Type           Name
     expect(nodeName(logical, 123)).toHaveLength(63);
   });
 
-  it("patches existing Kubernetes nodes with their Hetzner provider ID", () => {
-    expect(providerIdPatchCommand("worker-1", 123)).toContain(
-      `patch node "worker-1" --type=merge -p "{\\"spec\\":{\\"providerID\\":\\"hcloud://123\\"}}"`,
+  it("uses one resumable transaction when an HA peer changes bootstrap", () => {
+    const prepare = buildBootstrapRejoinPreparationScript(42);
+    const complete = buildBootstrapRejoinCompletionScript(42);
+
+    expect(prepare).toContain("db.alchemy-pre-rejoin-42");
+    expect(prepare).toContain("phase=prepared");
+    expect(prepare).toContain("rm -rf /var/lib/rancher/k3s/server/db");
+    expect(prepare).toContain("Bootstrap rejoin transaction marker is invalid");
+    expect(complete).toContain("phase=complete");
+    expect(complete).toContain(
+      "Bootstrap rejoin transaction is not prepared for completion",
     );
+    expect(spawnSync("bash", ["-n"], { input: prepare }).status).toBe(0);
+    expect(spawnSync("bash", ["-n"], { input: complete }).status).toBe(0);
   });
 
-  it("uses deterministic deploy keys for new servers and preserves legacy keys", () => {
-    const legacyPrivateKey = Redacted.make("legacy-private-key");
+  it("always uses the explicit deterministic deploy key", () => {
     const server = {
       id: 1,
       serverId: 1,
       name: "control-plane-1",
-      created: "2026-08-27T10:00:00Z",
-      privateKey: legacyPrivateKey,
     };
     const host = { publicKey: "ssh-ed25519 host" };
     const deploy = { privateKey: "deterministic-private-key" };
 
-    const current = serverReferenceWithSshIdentities(server, host, deploy, {
-      created: "2026-08-27T09:59:00Z",
-    });
-    expect(Redacted.value(current.privateKey!)).toBe(
+    const current = serverReferenceWithSshIdentities(server, host, deploy);
+    expect(Redacted.value(current.privateKey)).toBe(
       "deterministic-private-key",
     );
     expect(current.hostPublicKey).toBe(host.publicKey);
-
-    const legacy = serverReferenceWithSshIdentities(server, host, deploy, {
-      created: "2026-08-27T10:01:00Z",
-    });
-    expect(legacy.privateKey).toBe(legacyPrivateKey);
   });
 
-  it("preserves partial create output until persisted props contain a server", async () => {
+  it("refuses to trust partial state that cannot be re-observed", async () => {
     const output: NodeReference = {
       logicalName: "control-plane-1",
       name: "control-plane-1-1",
@@ -340,16 +377,22 @@ Active  Key Type           Name
       serverId: 1,
       privateIp: "10.0.0.2",
       version: "v1.35.3+k3s1",
-      server: { id: 1, serverId: 1, name: "control-plane-1" },
+      server: {
+        id: 1,
+        serverId: 1,
+        name: "control-plane-1",
+        privateKey: Redacted.make("private"),
+        hostPublicKey: "ssh-ed25519 host",
+      },
     };
-    const observed = await Effect.runPromise(
-      Effect.gen(function* () {
-        const provider = yield* Node.Provider;
-        return yield* provider.read!({ olds: {}, output } as never);
-      }).pipe(Effect.provide(NodeProvider())),
-    );
-
-    expect(observed).toBe(output);
+    await expect(
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const provider = yield* Node.Provider;
+          return yield* provider.read!({ olds: {}, output } as never);
+        }).pipe(Effect.provide(NodeProvider())),
+      ),
+    ).rejects.toThrow("greenfield state must never trust an unobservable node");
   });
 
   it("parallelizes fresh joins but serializes existing-node reconciles per cluster", async () => {

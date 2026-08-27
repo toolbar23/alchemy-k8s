@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as Redacted from "effect/Redacted";
 import type { NodeReference, ServerReference } from "../src/types.ts";
 
 const remote = vi.hoisted(() => ({
@@ -20,6 +21,8 @@ const server: ServerReference = {
   serverId: 1,
   name: "control-plane",
   ipv4: "192.0.2.1",
+  privateKey: Redacted.make("private"),
+  hostPublicKey: "ssh-ed25519 host",
 };
 
 const node: NodeReference = {

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import * as Hetzner from "alchemy/Hetzner";
 import * as Output from "alchemy/Output";
 import { Stage, makeRandom } from "alchemy";
@@ -10,6 +11,7 @@ import {
 } from "../../shared/src/definition.ts";
 import { ClusterState } from "./cluster-state.ts";
 import { hardenedCloudInit, sshIdentity } from "./hardening.ts";
+import { Machine } from "./machine.ts";
 import { Node } from "./node.ts";
 import type { Providers } from "./providers.ts";
 import type {
@@ -35,6 +37,32 @@ const dnsName = (value: string): string => {
   return normalized.slice(0, 63).replace(/-$/g, "");
 };
 
+export const physicalMachineName = (
+  ...parts: Array<string | number>
+): string => {
+  const desired = parts.map((part) => dnsName(String(part))).join("-");
+  if (desired.length <= 63) return desired;
+  const hash = createHash("sha256").update(desired).digest("hex").slice(0, 8);
+  return `${desired.slice(0, 54).replace(/-$/g, "")}-${hash}`;
+};
+
+const MACHINE_BOOTSTRAP_REVISION = 1;
+
+const machineGeneration = (
+  serverType: string,
+  location: string,
+  replacementToken: string | undefined,
+): string => {
+  const desired = JSON.stringify({
+    revision: MACHINE_BOOTSTRAP_REVISION,
+    serverType,
+    image: "ubuntu-24.04",
+    location,
+    replacementToken: replacementToken ?? null,
+  });
+  return createHash("sha256").update(desired).digest("hex").slice(0, 16);
+};
+
 export const productionStateWarning = (
   stage: string,
   stateId: string,
@@ -56,34 +84,17 @@ export const productionStateWarning = (
 
 export const serverReferenceWithSshIdentities = (
   server: Pick<ServerReference, "id" | "serverId" | "name"> & {
-    created: string;
     ipv4?: string | undefined;
-    privateKey?: ServerReference["privateKey"] | undefined;
   },
   host: { publicKey: string },
   deploy: { privateKey: string },
-  deployKey: { created: string },
 ): ServerReference => {
-  const serverCreatedAt = Date.parse(server.created);
-  const deployKeyCreatedAt = Date.parse(deployKey.created);
-  if (
-    !Number.isFinite(serverCreatedAt) ||
-    !Number.isFinite(deployKeyCreatedAt)
-  ) {
-    throw new Error(
-      "Hetzner server and SSH key creation times must be RFC3339",
-    );
-  }
-  const privateKey =
-    deployKeyCreatedAt <= serverCreatedAt
-      ? Redacted.make(deploy.privateKey)
-      : server.privateKey;
   return {
     id: server.id,
     serverId: server.serverId,
     name: server.name,
     ...(server.ipv4 === undefined ? {} : { ipv4: server.ipv4 }),
-    ...(privateKey === undefined ? {} : { privateKey }),
+    privateKey: Redacted.make(deploy.privateKey),
     hostPublicKey: host.publicKey,
   };
 };
@@ -203,40 +214,39 @@ export const Cluster = (id: string, props: ClusterProps) =>
           );
           const replacementToken =
             index === 0 ? props.recovery?.replacementToken : undefined;
-          const server = yield* Hetzner.Server(
-            `${id}-control-plane-${index + 1}`,
-            {
-              serverType: props.controlPlane.serverType,
-              image: "ubuntu-24.04",
-              // The public address supplies outbound internet; its inbound
-              // firewall is empty when management is private-only.
-              enableIpv4: true,
-              enableIpv6: false,
-              userData: Output.map(hostIdentity, (resolved) =>
-                hardenedCloudInit(resolved, replacementToken),
-              ),
+          const server = yield* Machine(`${id}-control-plane-${index + 1}`, {
+            name: physicalMachineName(id, "cp", index + 1),
+            credentials,
+            generation: machineGeneration(
+              props.controlPlane.serverType,
               location,
-              networks: [network],
-              firewalls: [firewall],
-              sshKeys: [deployKey],
-              deleteProtection: props.protectAgainstDeletion ?? true,
-              labels: {
-                "k3s.cluster": dnsName(id),
-                "k3s.role": "server",
-              },
+              replacementToken,
+            ),
+            serverType: props.controlPlane.serverType,
+            image: "ubuntu-24.04",
+            // The public address supplies outbound internet; its inbound
+            // firewall is empty when management is private-only.
+            enableIpv4: true,
+            enableIpv6: false,
+            userData: Output.map(hostIdentity, (resolved) =>
+              hardenedCloudInit(resolved, replacementToken),
+            ),
+            location,
+            network,
+            firewall,
+            sshKey: deployKey,
+            deleteProtection: props.protectAgainstDeletion ?? true,
+            labels: {
+              "k3s.cluster": dnsName(id),
+              "k3s.role": "server",
             },
-          );
+          });
           return {
             server,
             reference: Output.map(
-              Output.all(
-                Output.of(server),
-                hostIdentity,
-                deployIdentity,
-                Output.of(deployKey),
-              ),
-              ([resolved, host, deploy, key]) =>
-                serverReferenceWithSshIdentities(resolved, host, deploy, key),
+              Output.all(Output.of(server), hostIdentity, deployIdentity),
+              ([resolved, host, deploy]) =>
+                serverReferenceWithSshIdentities(resolved, host, deploy),
             ),
           };
         }),
@@ -277,39 +287,38 @@ export const Cluster = (id: string, props: ClusterProps) =>
                 },
               },
             );
-            const server = yield* Hetzner.Server(
-              `${id}-${pool.name}-${index + 1}`,
-              {
-                serverType: pool.serverType,
-                image: "ubuntu-24.04",
-                enableIpv4: true,
-                enableIpv6: false,
-                userData: Output.map(hostIdentity, (resolved) =>
-                  hardenedCloudInit(resolved, pool.replacementToken),
-                ),
-                location: pool.location,
-                networks: [network],
-                firewalls: [firewall],
-                sshKeys: [deployKey],
-                deleteProtection: props.protectAgainstDeletion ?? true,
-                labels: {
-                  "k3s.cluster": dnsName(id),
-                  "k3s.role": "agent",
-                  "k3s.pool": pool.name,
-                },
+            const server = yield* Machine(`${id}-${pool.name}-${index + 1}`, {
+              name: physicalMachineName(id, pool.name, index + 1),
+              credentials,
+              generation: machineGeneration(
+                pool.serverType,
+                pool.location,
+                pool.replacementToken,
+              ),
+              serverType: pool.serverType,
+              image: "ubuntu-24.04",
+              enableIpv4: true,
+              enableIpv6: false,
+              userData: Output.map(hostIdentity, (resolved) =>
+                hardenedCloudInit(resolved, pool.replacementToken),
+              ),
+              location: pool.location,
+              network,
+              firewall,
+              sshKey: deployKey,
+              deleteProtection: props.protectAgainstDeletion ?? true,
+              labels: {
+                "k3s.cluster": dnsName(id),
+                "k3s.role": "agent",
+                "k3s.pool": pool.name,
               },
-            );
+            });
             return {
               server,
               reference: Output.map(
-                Output.all(
-                  Output.of(server),
-                  hostIdentity,
-                  deployIdentity,
-                  Output.of(deployKey),
-                ),
-                ([resolved, host, deploy, key]) =>
-                  serverReferenceWithSshIdentities(resolved, host, deploy, key),
+                Output.all(Output.of(server), hostIdentity, deployIdentity),
+                ([resolved, host, deploy]) =>
+                  serverReferenceWithSshIdentities(resolved, host, deploy),
               ),
             };
           }),
