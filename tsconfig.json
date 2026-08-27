@@ -4,6 +4,7 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "paths": {
+      "alchemy-kubernetes-native": ["./packages/kubernetes-api/src/index.ts"],
       "alchemy-s3-access": ["./packages/s3-access/src/index.ts"]
     },
     "allowImportingTsExtensions": true,

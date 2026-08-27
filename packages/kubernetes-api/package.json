@@ -1,0 +1,56 @@
+{
+  "name": "alchemy-kubernetes-native",
+  "version": "0.1.1",
+  "description": "Typed Kubernetes API resources with Pulumi-like lifecycle semantics for Alchemy",
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "schema.lock.json"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/toolbar23/alchemy-k8s.git",
+    "directory": "packages/kubernetes-api"
+  },
+  "homepage": "https://github.com/toolbar23/alchemy-k8s#readme",
+  "bugs": "https://github.com/toolbar23/alchemy-k8s/issues",
+  "keywords": [
+    "alchemy",
+    "kubernetes",
+    "typed",
+    "iac"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "npm run generate:check && tsdown",
+    "generate": "node scripts/generate.mjs",
+    "generate:check": "node scripts/generate.mjs --check",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "kubernetes-models": "5.1.0",
+    "yaml": "2.9.0"
+  },
+  "peerDependencies": {
+    "alchemy": ">=2.0.0-beta.74 <3",
+    "effect": ">=4.0.0-rc.110 <5"
+  }
+}

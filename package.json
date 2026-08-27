@@ -18,6 +18,7 @@
   "workspaces": [
     "packages/hetzner",
     "packages/docker",
+    "packages/kubernetes-api",
     "packages/kubernetes-addons",
     "packages/s3-access"
   ],
@@ -29,6 +30,8 @@
     "lint": "eslint . && npm run format:check",
     "pack:check": "node scripts/check-packages.mjs",
     "release:check": "npm run check && npm audit --omit=dev && npm run render:charts",
+    "generate:kubernetes": "npm run generate --workspace packages/kubernetes-api",
+    "generate:kubernetes:check": "npm run generate:check --workspace packages/kubernetes-api",
     "render:charts": "npm run build --prefix packages/kubernetes-addons && node scripts/render-addon-charts.mjs",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
@@ -44,6 +47,7 @@
     "e2e:hetzner:upgrade": "node scripts/hetzner-e2e/upgrade.mjs",
     "e2e:hetzner:protection": "node scripts/hetzner-e2e/protection.mjs",
     "e2e:cloudflare:permissions": "node scripts/cloudflare-permission-negative.mjs",
+    "e2e:kubernetes-native": "npm run build --workspace packages/kubernetes-api && node scripts/kubernetes-api-e2e/matrix.mjs",
     "e2e:registry:preflight": "node scripts/registry-e2e/preflight.mjs",
     "e2e:registry:deploy": "node scripts/registry-e2e/deploy.mjs",
     "e2e:registry:checks": "node scripts/registry-e2e/checks.mjs",

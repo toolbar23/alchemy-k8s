@@ -26,42 +26,40 @@ for (const directory of rootManifest.workspaces) {
     );
   }
 
-  if (!dryRun) {
-    const publishedVersion = spawnSync(
+  const publishedVersion = spawnSync(
+    "npm",
+    ["view", `${manifest.name}@${manifest.version}`, "version"],
+    { encoding: "utf8" },
+  );
+  if (publishedVersion.error !== undefined) throw publishedVersion.error;
+  if (publishedVersion.status === 0) {
+    console.log(
+      `${manifest.name}@${manifest.version} is already published; skipping`,
+    );
+    continue;
+  }
+  const versionError = `${publishedVersion.stdout}${publishedVersion.stderr}`;
+  if (!versionError.includes("E404")) {
+    throw new Error(
+      `Could not check ${manifest.name}@${manifest.version}:\n${versionError}`,
+    );
+  }
+
+  if (!dryRun && !oidc) {
+    const publishedPackage = spawnSync(
       "npm",
-      ["view", `${manifest.name}@${manifest.version}`, "version"],
+      ["view", manifest.name, "version"],
       { encoding: "utf8" },
     );
-    if (publishedVersion.error !== undefined) throw publishedVersion.error;
-    if (publishedVersion.status === 0) {
-      console.log(
-        `${manifest.name}@${manifest.version} is already published; skipping`,
-      );
-      continue;
-    }
-    const versionError = `${publishedVersion.stdout}${publishedVersion.stderr}`;
-    if (!versionError.includes("E404")) {
+    if (publishedPackage.error !== undefined) throw publishedPackage.error;
+    if (publishedPackage.status === 0) {
       throw new Error(
-        `Could not check ${manifest.name}@${manifest.version}:\n${versionError}`,
+        `${manifest.name} already exists. Publish new versions through a GitHub Release and OIDC.`,
       );
     }
-
-    if (!oidc) {
-      const publishedPackage = spawnSync(
-        "npm",
-        ["view", manifest.name, "version"],
-        { encoding: "utf8" },
-      );
-      if (publishedPackage.error !== undefined) throw publishedPackage.error;
-      if (publishedPackage.status === 0) {
-        throw new Error(
-          `${manifest.name} already exists. Publish new versions through a GitHub Release and OIDC.`,
-        );
-      }
-      const packageError = `${publishedPackage.stdout}${publishedPackage.stderr}`;
-      if (!packageError.includes("E404")) {
-        throw new Error(`Could not check ${manifest.name}:\n${packageError}`);
-      }
+    const packageError = `${publishedPackage.stdout}${publishedPackage.stderr}`;
+    if (!packageError.includes("E404")) {
+      throw new Error(`Could not check ${manifest.name}:\n${packageError}`);
     }
   }
 

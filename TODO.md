@@ -954,6 +954,43 @@ successfully packed all four 0.1.0-alpha.6 workspaces.
 - [ ] Run the same live gate on Hetzner with a retained production-like bucket,
       public DNS, and trusted certificate.
 
+## Typed Kubernetes API provider
+
+- [x] Generate typed desired inputs and observed outputs for 39 stable built-in
+      resources across the selected Kubernetes API groups.
+- [x] Generate matching server-side apply patch constructors without generating
+      a provider per kind.
+- [x] Pin the schema source version, license, selected declarations, and digest;
+      fail builds when committed generated output is stale.
+- [x] Implement generic discovery, read, server-side apply, dry-run, watch, and
+      UID-preconditioned delete operations.
+- [x] Use a stable per-resource field manager and leave conflict takeover
+      opt-in.
+- [x] Re-observe live objects, project desired fields, repair drift, and ignore
+      server defaults, status, and other managers' fields.
+- [x] Mark owned objects with FQN and instance ID, report foreign objects as
+      unowned, and converge after an interrupted apply.
+- [x] Detect immutable dry-run failures, support explicit replace paths, and use
+      delete-first replacement where a Kubernetes name cannot coexist.
+- [x] Add watch-based readiness, 410 relist recovery, generic condition/bounded
+      JSONPath waits, deletion waits, and finalizer diagnostics.
+- [x] Add non-owning typed patch resources, configurable deletion propagation,
+      bounded timeouts, and `skipAwait`.
+- [x] Add YAML/List/file ConfigGroup composition with ordered,
+      dependency-chained child resources.
+- [x] Render Helm through `helm template` without a shell or temporary values
+      file and manage each result through the generic provider.
+- [x] Exclude Secret from every typed/generic/composition path and retain the
+      Redacted-safe write-only add-on as the only Secret API.
+- [x] Keep CRDs generic; do not add CRD-to-TypeScript generation.
+- [x] Add compile-time fixtures and lifecycle tests for drift, adoption,
+      interrupted apply, SSA conflicts, immutable replacement, UID deletion,
+      readiness, schema generation, YAML, Helm, and Secret rejection.
+- [x] Run the live typed-provider lifecycle against the current and previous
+      supported K3s minors. K3s `v1.36.3+k3s1` and `v1.35.7+k3s1` both passed
+      adoption, no-op planning, drift repair, immutable replacement, generic
+      CRD, and exact destroy on 2026-08-27.
+
 ## Deliberately deferred
 
 - [ ] Revisit Cilium only after a concrete network-policy or eBPF requirement.

@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 const packages = [
   "packages/hetzner",
   "packages/docker",
+  "packages/kubernetes-api",
   "packages/kubernetes-addons",
   "packages/s3-access",
 ];

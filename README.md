@@ -1,6 +1,6 @@
 # Alchemy K3s extensions
 
-Four experimental Alchemy extensions for self-managed K3s and composable
+Five experimental Alchemy extensions for self-managed K3s and composable
 Kubernetes services:
 
 - [`alchemy-hetzner-k3s`](packages/hetzner): Hetzner Cloud servers, private
@@ -8,6 +8,9 @@ Kubernetes services:
   patch updates.
 - [`alchemy-docker-k3s`](packages/docker): a persistent single-node local K3s
   cluster managed through k3d.
+- [`alchemy-kubernetes-native`](packages/kubernetes-api): generated typed
+  Kubernetes built-ins with drift detection, adoption, safe deletion, readiness,
+  YAML, and rendered Helm composition.
 - [`alchemy-kubernetes-addons`](packages/kubernetes-addons): Redacted-safe
   Kubernetes Secrets, bounded Helm workload readiness, Cloudflare ExternalDNS,
   cert-manager/Let's Encrypt, and S3-backed Parseable/OTLP observability
@@ -16,9 +19,10 @@ Kubernetes services:
   credential contract used to pass scoped S3-compatible bucket access.
 
 Both cluster providers return an object with a `connection` attribute and can be
-passed directly to `Kubernetes.Deployment`, `Job`, `Manifest`, or `HelmChart`.
-These packages are alpha software: test recovery and upgrades before using the
-Hetzner provider for important workloads.
+passed directly to `Kubernetes.Deployment`, `Job`, `Manifest`, or `HelmChart`,
+or to the typed resources in `alchemy-kubernetes-native`. These packages are
+alpha software: test recovery and upgrades before using the Hetzner provider for
+important workloads.
 
 ## Hetzner cluster
 
@@ -648,8 +652,20 @@ npm run release:check
 ```
 
 The release check runs type, lint, unit, build, package-content, dependency
-audit, and pinned Helm-render checks. A reusable live smoke stack exercises the
-write-only Secret and OTLP gateway against either local k3d or Hetzner K3s:
+audit, and pinned Helm-render checks.
+
+The typed Kubernetes provider has a separate current/previous-minor k3d matrix:
+
+```sh
+mise run e2e:kubernetes-native
+```
+
+It adopts pre-created objects, proves no-op planning and drift repair, replaces
+an immutable StatefulSet, applies a CRD plus generic custom resource, and
+verifies exact teardown.
+
+A reusable live smoke stack exercises the write-only Secret and OTLP gateway
+against either local k3d or Hetzner K3s:
 
 ```sh
 ADDONS_E2E_KUBECONFIG=/path/to/kubeconfig \
