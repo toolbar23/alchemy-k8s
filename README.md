@@ -725,8 +725,9 @@ After the bootstrap, configure each package on npmjs.com with this trusted
 publisher:
 
 - organization/user: `toolbar23`
-- repository: `alchemy-k3s`
+- repository: `alchemy-k8s`
 - workflow: `publish.yml`
+- environment: `npm`
 - allowed action: `npm publish`
 
 Then set each package's publishing access to **Require two-factor authentication

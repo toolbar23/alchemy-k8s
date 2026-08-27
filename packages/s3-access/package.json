@@ -1,6 +1,6 @@
 {
   "name": "alchemy-s3-access",
-  "version": "0.1.0-alpha.6",
+  "version": "0.1.1",
   "description": "Provider-neutral S3 access contract for Alchemy integrations",
   "license": "Apache-2.0",
   "type": "module",
@@ -23,11 +23,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/toolbar23/alchemy-k3s.git",
+    "url": "git+https://github.com/toolbar23/alchemy-k8s.git",
     "directory": "packages/s3-access"
   },
-  "homepage": "https://github.com/toolbar23/alchemy-k3s#readme",
-  "bugs": "https://github.com/toolbar23/alchemy-k3s/issues",
+  "homepage": "https://github.com/toolbar23/alchemy-k8s#readme",
+  "bugs": "https://github.com/toolbar23/alchemy-k8s/issues",
   "keywords": [
     "alchemy",
     "s3",

@@ -1,6 +1,6 @@
 {
   "name": "alchemy-kubernetes-addons",
-  "version": "0.1.0-alpha.6",
+  "version": "0.1.1",
   "description": "Composable Kubernetes add-ons and safe primitives for Alchemy",
   "license": "Apache-2.0",
   "type": "module",
@@ -23,11 +23,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/toolbar23/alchemy-k3s.git",
+    "url": "git+https://github.com/toolbar23/alchemy-k8s.git",
     "directory": "packages/kubernetes-addons"
   },
-  "homepage": "https://github.com/toolbar23/alchemy-k3s#readme",
-  "bugs": "https://github.com/toolbar23/alchemy-k3s/issues",
+  "homepage": "https://github.com/toolbar23/alchemy-k8s#readme",
+  "bugs": "https://github.com/toolbar23/alchemy-k8s/issues",
   "keywords": [
     "alchemy",
     "kubernetes",

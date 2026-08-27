@@ -441,7 +441,7 @@ covered:
 - Dry-run packing of all four synchronized public packages.
 
 The current main CI run was passing:
-[GitHub Actions run](https://github.com/toolbar23/alchemy-k3s/actions/runs/32931545312).
+[GitHub Actions run](https://github.com/toolbar23/alchemy-k8s/actions/runs/32931545312).
 
 The local CI is broader than the inspected upstream workflow: it runs audit and
 the full check command, while the upstream workflow primarily compiles release
