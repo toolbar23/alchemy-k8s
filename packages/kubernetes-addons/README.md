@@ -4,6 +4,24 @@ Composable Kubernetes resources built on Alchemy's public cluster-adapter API.
 They work with any `Kubernetes.ClusterLike`, including Hetzner K3s, Docker K3s,
 EKS, and kubeconfig connections.
 
+## Cloudflare Tunnel ingress
+
+`CloudflareTunnelIngress` installs STRRL's pinned ingress controller, a
+namespace, and a separate scoped Cloudflare token. Supply `cluster`,
+`accountId`, `zoneId`, and a cluster-unique `tunnelName`; optionally supply an
+external Redacted `token`. It returns the chart, namespace, release name, tunnel
+name, and `ingressClassName: "cloudflare-tunnel"`. It never makes that class
+default.
+
+`dependsOn` accepts a non-secret resource dependency, such as a hostname
+admission binding. Helm receives only a Secret reference; Secret revisions
+restart the controller after rotation. The upstream controller can overwrite an
+existing CNAME for a claimed hostname. Check ownership and gate allowed
+hostnames before using it in a shared zone; the
+[Kairos stack](../../examples/kairos-platform/README.md) implements both. Do not
+run ExternalDNS against the same hosts. Remove ingress routes and wait for DNS
+cleanup before uninstalling; the tunnel is retained.
+
 Add the provider beside Alchemy's Kubernetes provider:
 
 ```ts

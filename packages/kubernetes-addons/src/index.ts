@@ -23,6 +23,17 @@ import {
 } from "./client.ts";
 
 export {
+  CloudflareTunnelIngress,
+  CLOUDFLARE_TUNNEL_CHART,
+  CLOUDFLARE_TUNNEL_REPO,
+  CLOUDFLARE_TUNNEL_VERSION,
+  CLOUDFLARED_VERSION,
+  cloudflareTunnelHelmValues,
+  cloudflareTunnelTokenPolicies,
+  type CloudflareTunnelIngressProps,
+} from "./cloudflare-tunnel-ingress.ts";
+
+export {
   CloudflareExternalDns,
   EXTERNAL_DNS_CHART_VERSION,
   EXTERNAL_DNS_IMAGE,

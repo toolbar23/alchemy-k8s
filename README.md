@@ -1,5 +1,8 @@
 # Alchemy K3s extensions
 
+For the existing home cluster, see the independent
+[Kairos Cloudflare ingress stack](examples/kairos-platform/README.md).
+
 Five experimental Alchemy extensions for self-managed K3s and composable
 Kubernetes services:
 

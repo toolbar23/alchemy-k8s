@@ -6,6 +6,10 @@ import { join } from "node:path";
 import process from "node:process";
 import * as Redacted from "effect/Redacted";
 import {
+  CLOUDFLARE_TUNNEL_CHART,
+  CLOUDFLARE_TUNNEL_REPO,
+  CLOUDFLARE_TUNNEL_VERSION,
+  cloudflareTunnelHelmValues,
   CERT_MANAGER_CHART,
   CERT_MANAGER_CHART_VERSION,
   CONTAINER_REGISTRY_CHART,
@@ -25,6 +29,19 @@ const canary = "alchemy-release-secret-canary";
 const directory = mkdtempSync(join(tmpdir(), "alchemy-addon-charts-"));
 
 const charts = [
+  {
+    name: "cloudflare-tunnel",
+    chart: CLOUDFLARE_TUNNEL_CHART,
+    repo: CLOUDFLARE_TUNNEL_REPO,
+    version: CLOUDFLARE_TUNNEL_VERSION,
+    expectedKind: "IngressClass",
+    values: cloudflareTunnelHelmValues(
+      "cloudflare-tunnel",
+      "credentials",
+      "secret-revision",
+      "admission-revision",
+    ),
+  },
   {
     name: "external-dns",
     chart: "external-dns",
