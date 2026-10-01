@@ -1,12 +1,19 @@
 import { chmod, mkdir, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 
+/**
+ * Relative to the directory Alchemy runs from. Alchemy identifies a cluster by
+ * its connection's auth, which contains this path, so an absolute path would
+ * make every checkout or workspace look like a different cluster and replace
+ * everything deployed to it. Reading the cluster rewrites the file wherever
+ * Alchemy runs.
+ */
 export const kubeconfigPath = (
   provider: "hetzner" | "docker",
   fqn: string,
 ): string => {
   const safe = fqn.replace(/[^a-zA-Z0-9_.-]+/g, "-").replace(/^-|-$/g, "");
-  return resolve(join(".alchemy", "kubeconfigs", provider, `${safe}.yaml`));
+  return join(".alchemy", "kubeconfigs", provider, `${safe}.yaml`);
 };
 
 export const writeKubeconfig = async (
