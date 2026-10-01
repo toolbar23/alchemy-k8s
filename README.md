@@ -212,6 +212,27 @@ ingress publication while HCCM continues to route to node targets over the
 private network. This prevents ExternalDNS from publishing the cluster-private
 address beside the public load-balancer address.
 
+`k3s.addons.traefikValues` adds Helm values to that `HelmChartConfig`, for
+example longer entrypoint timeouts for large uploads such as container image
+layers (Traefik 3 closes requests after 60 seconds by default):
+
+```ts
+addons: {
+  traefikValues: {
+    ports: {
+      websecure: {
+        transport: { respondingTimeouts: { readTimeout: "30m", writeTimeout: "30m" } },
+      },
+    },
+  },
+},
+```
+
+The values must be plain JSON and are merged recursively; the load-balancer
+annotation above always wins. The node reconcile rewrites the auto-deploy
+manifest whenever the K3s props change, so existing clusters pick up new values
+on the next deploy and K3s applies them to Traefik.
+
 The bucket must be created in a separate retained stack with encryption,
 versioning, and bucket-scoped credentials. K3s receives session-token and
 path-style settings for scheduled save/prune and restore. Recovery lists and

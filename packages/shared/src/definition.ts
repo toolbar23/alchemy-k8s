@@ -93,6 +93,7 @@ export const normalizeK3sDefinition = (
     addons: {
       traefik: definition.addons?.traefik ?? true,
       metricsServer: definition.addons?.metricsServer ?? true,
+      traefikValues: definition.addons?.traefikValues ?? {},
     },
     flannelBackend: definition.flannelBackend ?? "vxlan",
   };
@@ -103,6 +104,29 @@ export const normalizeK3sDefinition = (
     throw new Error(
       `flannelBackend must be "vxlan" or "wireguard-native"; received ${JSON.stringify(normalized.flannelBackend)}`,
     );
+  }
+  const traefikValues = normalized.addons.traefikValues;
+  const isJson = (value: unknown): boolean =>
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "boolean" ||
+    (typeof value === "number" && Number.isFinite(value)) ||
+    (Array.isArray(value) && value.every(isJson)) ||
+    (typeof value === "object" &&
+      Object.getPrototypeOf(value) === Object.prototype &&
+      Object.values(value as Record<string, unknown>).every(isJson));
+  if (
+    typeof traefikValues !== "object" ||
+    traefikValues === null ||
+    Array.isArray(traefikValues) ||
+    !isJson(traefikValues)
+  ) {
+    throw new Error(
+      "addons.traefikValues must be a plain JSON object of Helm values",
+    );
+  }
+  if (!normalized.addons.traefik && Object.keys(traefikValues).length > 0) {
+    throw new Error("addons.traefikValues requires addons.traefik");
   }
   const ranges = [
     ["clusterCidr", normalized.clusterCidr],

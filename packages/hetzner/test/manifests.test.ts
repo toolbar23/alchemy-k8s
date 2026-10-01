@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { parse } from "yaml";
 import * as Redacted from "effect/Redacted";
 import { describe, expect, it } from "vitest";
 import { normalizeK3sDefinition } from "../../shared/src/definition.ts";
@@ -16,6 +17,7 @@ import {
   HCCM_VERSION,
   SYSTEM_UPGRADE_CONTROLLER_MANIFEST,
   systemUpgradePlans,
+  traefikHelmChartConfig,
 } from "../src/manifests.ts";
 import {
   buildInstallScript,
@@ -108,6 +110,56 @@ describe("Hetzner bootstrap", () => {
     expect(script).toContain("rollout status deployment/hcloud-csi-controller");
   });
 
+  it("merges Traefik Helm values while keeping the load balancer public", () => {
+    const k3s = normalizeK3sDefinition({
+      channel: "v1.36",
+      updateWindow: {
+        days: ["Sunday"],
+        startTime: "02:00",
+        endTime: "04:00",
+        timeZone: "Europe/Berlin",
+      },
+      addons: {
+        traefikValues: {
+          ports: {
+            websecure: {
+              transport: { respondingTimeouts: { readTimeout: "30m" } },
+            },
+          },
+          service: {
+            annotations: {
+              "load-balancer.hetzner.cloud/disable-private-ingress": "false",
+              "example.com/extra": "kept",
+            },
+          },
+        },
+      },
+    });
+    const config = parse(traefikHelmChartConfig(k3s)) as {
+      kind: string;
+      metadata: { name: string; namespace: string };
+      spec: { valuesContent: string };
+    };
+    expect(config.kind).toBe("HelmChartConfig");
+    expect(config.metadata).toEqual({
+      name: "traefik",
+      namespace: "kube-system",
+    });
+    expect(parse(config.spec.valuesContent)).toEqual({
+      ports: {
+        websecure: {
+          transport: { respondingTimeouts: { readTimeout: "30m" } },
+        },
+      },
+      service: {
+        annotations: {
+          "load-balancer.hetzner.cloud/disable-private-ingress": "true",
+          "example.com/extra": "kept",
+        },
+      },
+    });
+  });
+
   it("pins HCCM independently from the Kubernetes minor", () => {
     const script = buildAddonScript({
       hcloudToken: Redacted.make("token"),
@@ -184,7 +236,7 @@ describe("Hetzner bootstrap", () => {
     expect(script).toContain(`'--flannel-iface' "$private_interface"`);
     expect(script).toContain("'--kubelet-arg' 'provider-id=hcloud://1'");
     expect(script).toContain(
-      'load-balancer.hetzner.cloud/disable-private-ingress: "true"',
+      Buffer.from(traefikHelmChartConfig(props.k3s)).toString("base64"),
     );
     expect(script).toContain("'--etcd-s3-bucket-lookup-type' 'path'");
     expect(script).toContain("'--etcd-s3-session-token' 'session'");

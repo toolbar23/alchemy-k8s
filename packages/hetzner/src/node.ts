@@ -28,6 +28,7 @@ import {
   listRemoteEtcdSnapshots,
   selectRecoverySnapshot,
 } from "./recovery.ts";
+import { traefikHelmChartConfig } from "./manifests.ts";
 import type {
   NodeProps,
   NodeReference,
@@ -222,18 +223,7 @@ ALCHEMY_AUDIT_POLICY
 }${
     props.initialServer && props.k3s.addons.traefik
       ? `install -d -m 0700 /var/lib/rancher/k3s/server/manifests
-cat > /var/lib/rancher/k3s/server/manifests/traefik-config.yaml <<'ALCHEMY_TRAEFIK_CONFIG'
-apiVersion: helm.cattle.io/v1
-kind: HelmChartConfig
-metadata:
-  name: traefik
-  namespace: kube-system
-spec:
-  valuesContent: |-
-    service:
-      annotations:
-        load-balancer.hetzner.cloud/disable-private-ingress: "true"
-ALCHEMY_TRAEFIK_CONFIG
+printf %s ${shellQuote(Buffer.from(traefikHelmChartConfig(props.k3s)).toString("base64"))} | base64 -d > /var/lib/rancher/k3s/server/manifests/traefik-config.yaml
 `
       : ""
   }private_interface=$(ip -o -4 addr show | awk -v address=${shellQuote(privateIp)} 'index($4, address "/") == 1 { print $2; exit }')

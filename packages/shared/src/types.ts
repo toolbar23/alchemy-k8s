@@ -29,6 +29,12 @@ export interface K3sDefinition {
   addons?: {
     traefik?: boolean;
     metricsServer?: boolean;
+    /**
+     * Additional Helm values for K3s' bundled Traefik chart, merged into its HelmChartConfig,
+     * e.g. `{ ports: { websecure: { transport: { respondingTimeouts: { readTimeout: "30m" } } } } }`.
+     * The Hetzner load-balancer annotation the package sets always wins. Requires `traefik`.
+     */
+    traefikValues?: Record<string, unknown>;
   };
   /** K3s' built-in Flannel data plane. @default "vxlan" */
   flannelBackend?: "vxlan" | "wireguard-native";
@@ -43,6 +49,7 @@ export interface NormalizedK3sDefinition {
   addons: {
     traefik: boolean;
     metricsServer: boolean;
+    traefikValues: Record<string, unknown>;
   };
   flannelBackend: "vxlan" | "wireguard-native";
 }

@@ -22,8 +22,44 @@ describe("K3s definitions", () => {
       clusterCidr: "10.244.0.0/16",
       serviceCidr: "10.43.0.0/16",
       clusterDns: "10.43.0.10",
-      addons: { traefik: true, metricsServer: true },
+      addons: { traefik: true, metricsServer: true, traefikValues: {} },
     });
+  });
+
+  it("accepts Traefik Helm values only as JSON objects with Traefik enabled", () => {
+    const definition = {
+      channel: "v1.35" as const,
+      updateWindow: {
+        days: ["Sunday" as const],
+        startTime: "02:00" as const,
+        endTime: "04:00" as const,
+        timeZone: "Europe/Berlin",
+      },
+    };
+    expect(
+      normalizeK3sDefinition({
+        ...definition,
+        addons: { traefikValues: { ports: { web: { exposedPort: 80 } } } },
+      }).addons.traefikValues,
+    ).toEqual({ ports: { web: { exposedPort: 80 } } });
+    expect(() =>
+      normalizeK3sDefinition({
+        ...definition,
+        addons: { traefik: false, traefikValues: { ports: {} } },
+      }),
+    ).toThrow(/requires addons.traefik/);
+    for (const traefikValues of [
+      [],
+      { timeout: Number.NaN },
+      { hook: () => 1 },
+    ]) {
+      expect(() =>
+        normalizeK3sDefinition({
+          ...definition,
+          addons: { traefikValues: traefikValues as Record<string, unknown> },
+        }),
+      ).toThrow(/plain JSON object/);
+    }
   });
 
   it("rejects floating channels and invalid windows", () => {
