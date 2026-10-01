@@ -123,6 +123,43 @@ waits for cloud-init and uses a one-host `known_hosts` file with strict
 checking. K3s uses a commit-pinned installer whose SHA-256 is verified before
 execution; the installer in turn verifies the exact resolved K3s binary.
 
+The cluster's kubeconfig is written to `.alchemy/kubeconfigs/hetzner/` below the
+directory Alchemy runs from, and the connection refers to it by that relative
+path. Alchemy identifies a cluster by its connection, so the same stack deployed
+from another checkout or JJ workspace still targets the same cluster instead of
+replacing every object on it.
+
+### Local disks for worker pools
+
+A Hetzner Cloud server has one local NVMe disk, and the image grows its root
+filesystem over all of it. A worker pool can split that disk instead:
+
+```ts
+workerPools: [
+  {
+    name: "general",
+    serverType: "cx33",
+    location: "fsn1",
+    count: 4,
+    localDisks: { rootGiB: 10, containerdGiB: 10, volumeGroup: "cache" },
+  },
+],
+```
+
+Cloud-init then disables `growpart`, grows root to exactly `rootGiB`, creates an
+ext4 partition for containerd at `/var/lib/rancher/k3s/agent/containerd` and
+gives the rest of the disk to the LVM volume group `volumeGroup`, all before K3s
+is installed. The kubelet sees a separate image filesystem, so image garbage
+collection and eviction no longer compete with the root filesystem. A systemd
+drop-in keeps K3s stopped while the containerd partition is not mounted. Nodes
+are labelled `alchemy.run/local-volume-group=<volumeGroup>` so a local volume
+provisioner such as TopoLVM runs only where the group exists.
+
+Every step is keyed on GPT partition labels and is safe to repeat. A failure
+leaves cloud-init in the `error` state, which stops provisioning of that node.
+Changing `localDisks` replaces the pool's machines one at a time; pools without
+it keep their machines.
+
 ### Crash convergence and state boundaries
 
 `alchemy-hetzner-k3s` does not treat the end of an Alchemy provider callback as

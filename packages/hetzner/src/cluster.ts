@@ -17,6 +17,7 @@ import type { Providers } from "./providers.ts";
 import type {
   ClusterProps,
   ClusterResource,
+  LocalDisks,
   NodeResource,
   ServerReference,
 } from "./types.ts";
@@ -48,17 +49,20 @@ export const physicalMachineName = (
 
 const MACHINE_BOOTSTRAP_REVISION = 1;
 
-const machineGeneration = (
+export const machineGeneration = (
   serverType: string,
   location: string,
   replacementToken: string | undefined,
+  localDisks?: LocalDisks,
 ): string => {
+  // Pools without local disks keep the generation they had before the option existed.
   const desired = JSON.stringify({
     revision: MACHINE_BOOTSTRAP_REVISION,
     serverType,
     image: "ubuntu-24.04",
     location,
     replacementToken: replacementToken ?? null,
+    ...(localDisks === undefined ? {} : { localDisks }),
   });
   return createHash("sha256").update(desired).digest("hex").slice(0, 16);
 };
@@ -294,13 +298,18 @@ export const Cluster = (id: string, props: ClusterProps) =>
                 pool.serverType,
                 pool.location,
                 pool.replacementToken,
+                pool.localDisks,
               ),
               serverType: pool.serverType,
               image: "ubuntu-24.04",
               enableIpv4: true,
               enableIpv6: false,
               userData: Output.map(hostIdentity, (resolved) =>
-                hardenedCloudInit(resolved, pool.replacementToken),
+                hardenedCloudInit(
+                  resolved,
+                  pool.replacementToken,
+                  pool.localDisks,
+                ),
               ),
               location: pool.location,
               network,
@@ -425,7 +434,15 @@ export const Cluster = (id: string, props: ClusterProps) =>
           networkCidr,
           apiEndpoint: apiAddress,
           scheduleWorkloadsOnControlPlane: false,
-          labels: { ...pool.labels, "alchemy.run/node-pool": pool.name },
+          labels: {
+            ...pool.labels,
+            "alchemy.run/node-pool": pool.name,
+            ...(pool.localDisks === undefined
+              ? {}
+              : {
+                  "alchemy.run/local-volume-group": pool.localDisks.volumeGroup,
+                }),
+          },
           ...(pool.taints === undefined ? {} : { taints: pool.taints }),
           etcdSnapshots,
           hcloudToken: credentials.token,

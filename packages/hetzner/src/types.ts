@@ -16,6 +16,20 @@ export type {
   UpdateWindow,
 } from "../../shared/src/types.ts";
 
+/**
+ * Splits the server's local boot disk at first boot: a fixed-size root, a
+ * dedicated containerd partition, and the remainder as an LVM volume group
+ * for local persistent volumes (for example TopoLVM).
+ */
+export interface LocalDisks {
+  /** Root filesystem size in GiB. */
+  rootGiB: number;
+  /** ext4 partition for images and container layers, in GiB. */
+  containerdGiB: number;
+  /** Volume group that receives the rest of the disk. */
+  volumeGroup: string;
+}
+
 export interface WorkerPool {
   name: string;
   serverType: string;
@@ -23,6 +37,8 @@ export interface WorkerPool {
   count: number;
   /** Changing this value performs a serialized fixed-name machine replacement. */
   replacementToken?: string;
+  /** Changing this value also replaces the pool's machines. */
+  localDisks?: LocalDisks;
   labels?: Record<string, string>;
   taints?: string[];
 }

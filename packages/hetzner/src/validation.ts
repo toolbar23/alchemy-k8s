@@ -87,6 +87,28 @@ export const validateClusterProps = (props: ClusterProps): void => {
         `Worker pool ${pool.name} count must be a non-negative integer`,
       );
     }
+    const disks = pool.localDisks;
+    if (disks !== undefined) {
+      if (!Number.isInteger(disks.rootGiB) || disks.rootGiB < 8) {
+        throw new Error(
+          `Worker pool ${pool.name} localDisks.rootGiB must be an integer of at least 8`,
+        );
+      }
+      if (!Number.isInteger(disks.containerdGiB) || disks.containerdGiB < 4) {
+        throw new Error(
+          `Worker pool ${pool.name} localDisks.containerdGiB must be an integer of at least 4`,
+        );
+      }
+      // The name is a GPT partition label, an LVM volume group and a Node label value.
+      if (
+        !/^[a-z][a-z0-9-]{0,35}$/.test(disks.volumeGroup) ||
+        disks.volumeGroup === "containerd"
+      ) {
+        throw new Error(
+          `Worker pool ${pool.name} localDisks.volumeGroup must be a lowercase name of at most 36 characters other than "containerd"`,
+        );
+      }
+    }
     networkZoneFor([pool.location, ...normalizeLocations(props)]);
   }
   if (props.ssh.allowedCidrs.length === 0 && !props.ssh.privateOnly) {

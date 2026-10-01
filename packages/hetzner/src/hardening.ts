@@ -1,5 +1,6 @@
 import { createPrivateKey, createPublicKey } from "node:crypto";
 import * as Redacted from "effect/Redacted";
+import type { LocalDisks } from "./types.ts";
 
 const uint32 = (value: number): Buffer => {
   const bytes = Buffer.alloc(4);
@@ -82,10 +83,46 @@ const indent = (value: string, spaces: number): string =>
     .map((line) => `${" ".repeat(spaces)}${line}`)
     .join("\n");
 
+export const CONTAINERD_DIRECTORY = "/var/lib/rancher/k3s/agent/containerd";
+
+/**
+ * Runs from cloud-init before K3s is installed and is safe to repeat: it
+ * shrinks nothing, keys every step on partition labels, and leaves an
+ * existing volume group alone. K3s refuses to start without the containerd
+ * mount, so images can never silently land on the root filesystem.
+ */
+export const LOCAL_DISKS_SCRIPT = `#!/bin/bash
+set -euo pipefail
+ROOT_SIZE=\${1:?root size}; CONTAINERD_SIZE=\${2:?containerd size}; VG=\${3:?volume group}
+CONTAINERD_DIR=${CONTAINERD_DIRECTORY}
+root_part=$(findmnt -no SOURCE /)
+disk=/dev/$(lsblk -no PKNAME "$root_part")
+root_num=$(cat "/sys/class/block/$(basename "$root_part")/partition")
+if [ ! -e /dev/disk/by-partlabel/containerd ]; then
+  sgdisk -e "$disk"
+  echo ",$ROOT_SIZE" | sfdisk --no-reread --no-tell-kernel -N "$root_num" "$disk"
+  sgdisk -n "0:0:+$CONTAINERD_SIZE" -t 0:8300 -c 0:containerd -n 0:0:0 -t 0:8e00 -c "0:$VG" "$disk"
+  partx -u "$disk"
+  udevadm settle
+fi
+resize2fs "$root_part"
+[ "$(blkid -o value -s TYPE /dev/disk/by-partlabel/containerd)" = ext4 ] || mkfs.ext4 -q -L containerd /dev/disk/by-partlabel/containerd
+grep -q " $CONTAINERD_DIR " /etc/fstab || echo "PARTLABEL=containerd $CONTAINERD_DIR ext4 defaults,noatime 0 2" >> /etc/fstab
+mkdir -p "$CONTAINERD_DIR"
+for unit in k3s k3s-agent; do
+  mkdir -p "/etc/systemd/system/$unit.service.d"
+  printf '[Unit]\\nRequiresMountsFor=%s\\n[Service]\\nExecStartPre=/usr/bin/mountpoint -q %s\\n' "$CONTAINERD_DIR" "$CONTAINERD_DIR" > "/etc/systemd/system/$unit.service.d/containerd-mount.conf"
+done
+systemctl daemon-reload
+mountpoint -q "$CONTAINERD_DIR" || mount "$CONTAINERD_DIR"
+vgs "$VG" >/dev/null 2>&1 || { pvcreate -y "/dev/disk/by-partlabel/$VG"; vgcreate "$VG" "/dev/disk/by-partlabel/$VG"; }
+`;
+
 /** Full user-data document, so Alchemy's mutable Bun bootstrap is bypassed. */
 export const hardenedCloudInit = (
   identity: { publicKey: string; privateKey: string },
   replacementToken?: string,
+  localDisks?: LocalDisks,
 ): string => `Content-Type: multipart/mixed; boundary="alchemy-k3s"
 MIME-Version: 1.0
 
@@ -94,7 +131,7 @@ Content-Type: text/cloud-config; charset="utf-8"
 MIME-Version: 1.0
 
 #cloud-config
-ssh_deletekeys: true
+${localDisks === undefined ? "" : `growpart:\n  mode: "off"\nresize_rootfs: false\n`}ssh_deletekeys: true
 ssh_keys:
   ed25519_private: |
 ${indent(identity.privateKey, 4)}
@@ -115,9 +152,22 @@ write_files:
       AllowAgentForwarding no
       AllowTcpForwarding no
       PermitTunnel no
-runcmd:
+${
+  localDisks === undefined
+    ? ""
+    : `  - path: /usr/local/sbin/alchemy-k3s-local-disks
+    owner: root:root
+    permissions: "0755"
+    content: |
+${indent(LOCAL_DISKS_SCRIPT, 6)}
+`
+}runcmd:
   - [/usr/sbin/sshd, -t]
   - [systemctl, restart, ssh]
-final_message: "Alchemy K3s cloud-init complete${replacementToken === undefined ? "" : ` (${replacementToken})`}"
+${
+  localDisks === undefined
+    ? ""
+    : `  - [/usr/local/sbin/alchemy-k3s-local-disks, ${localDisks.rootGiB}G, ${localDisks.containerdGiB}G, ${JSON.stringify(localDisks.volumeGroup)}]\n`
+}final_message: "Alchemy K3s cloud-init complete${replacementToken === undefined ? "" : ` (${replacementToken})`}"
 --alchemy-k3s--
 `;

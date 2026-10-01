@@ -65,4 +65,43 @@ describe("Hetzner topology validation", () => {
     };
     expect(() => validateClusterProps(props)).toThrow("etcdSnapshots.s3");
   });
+
+  it("validates the local disk layout of a worker pool", () => {
+    const withDisks = (localDisks: {
+      rootGiB: number;
+      containerdGiB: number;
+      volumeGroup: string;
+    }) => ({
+      k3s: {} as never,
+      controlPlane: {
+        count: 1 as const,
+        serverType: "cx23",
+        locations: "fsn1",
+      },
+      workerPools: [
+        {
+          name: "general",
+          serverType: "cx33",
+          location: "fsn1",
+          count: 1,
+          localDisks,
+        },
+      ],
+      ssh: { allowedCidrs: ["203.0.113.1/32"] },
+    });
+    const valid = { rootGiB: 10, containerdGiB: 10, volumeGroup: "cache" };
+    expect(() => validateClusterProps(withDisks(valid))).not.toThrow();
+    expect(() =>
+      validateClusterProps(withDisks({ ...valid, rootGiB: 4 })),
+    ).toThrow("rootGiB");
+    expect(() =>
+      validateClusterProps(withDisks({ ...valid, containerdGiB: 2.5 })),
+    ).toThrow("containerdGiB");
+    expect(() =>
+      validateClusterProps(withDisks({ ...valid, volumeGroup: "containerd" })),
+    ).toThrow("volumeGroup");
+    expect(() =>
+      validateClusterProps(withDisks({ ...valid, volumeGroup: "Cache VG" })),
+    ).toThrow("volumeGroup");
+  });
 });
