@@ -85,6 +85,7 @@ const installArguments = (
     "cloud-provider=external",
     "--kubelet-arg",
     `provider-id=hcloud://${props.server.serverId}`,
+    ...props.k3s.kubeletArgs.flatMap((arg) => ["--kubelet-arg", arg]),
   ];
   if (props.initialServer) {
     args.push(

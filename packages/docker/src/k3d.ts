@@ -79,6 +79,7 @@ export const buildCreateArgs = (
     `--service-cidr=${props.k3s.serviceCidr}`,
     `--cluster-dns=${props.k3s.clusterDns}`,
     `--flannel-backend=${props.k3s.flannelBackend}`,
+    ...props.k3s.kubeletArgs.map((arg) => `--kubelet-arg=${arg}`),
   ]) {
     args.push("--k3s-arg", `${value}@server:0`);
   }

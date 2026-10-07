@@ -50,6 +50,7 @@ export const Cluster = (id: string, props: ClusterProps) =>
         serviceCidr: k3s.serviceCidr,
         clusterDns: k3s.clusterDns,
         addons: k3s.addons,
+        kubeletArgs: k3s.kubeletArgs,
       }),
     });
   });

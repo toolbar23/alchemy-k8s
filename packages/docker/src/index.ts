@@ -6,5 +6,6 @@ export type {
   ClusterAttributes,
   ClusterProps,
   K3sDefinition,
+  KubeletSettings,
   PortMapping,
 } from "./types.ts";

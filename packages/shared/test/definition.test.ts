@@ -26,6 +26,63 @@ describe("K3s definitions", () => {
     });
   });
 
+  it("renders validated kubelet image GC thresholds and extra flags", () => {
+    const definition = {
+      channel: "v1.35" as const,
+      updateWindow: {
+        days: ["Sunday" as const],
+        startTime: "02:00" as const,
+        endTime: "04:00" as const,
+        timeZone: "Europe/Berlin",
+      },
+    };
+    expect(normalizeK3sDefinition(definition).kubeletArgs).toEqual([]);
+    expect(
+      normalizeK3sDefinition({
+        ...definition,
+        kubelet: {
+          imageGc: { highThresholdPercent: 60, lowThresholdPercent: 40 },
+          extraArgs: ["max-pods=150"],
+        },
+      }).kubeletArgs,
+    ).toEqual([
+      "image-gc-high-threshold=60",
+      "image-gc-low-threshold=40",
+      "max-pods=150",
+    ]);
+    for (const imageGc of [
+      { highThresholdPercent: 40, lowThresholdPercent: 60 },
+      { highThresholdPercent: 60, lowThresholdPercent: 60 },
+      { highThresholdPercent: 101, lowThresholdPercent: 40 },
+      { highThresholdPercent: 60.5, lowThresholdPercent: 40 },
+      { highThresholdPercent: 60, lowThresholdPercent: -1 },
+    ]) {
+      expect(() =>
+        normalizeK3sDefinition({ ...definition, kubelet: { imageGc } }),
+      ).toThrow(/kubelet.imageGc/);
+    }
+    for (const arg of ["--max-pods=150", "max-pods", "max pods=1"]) {
+      expect(() =>
+        normalizeK3sDefinition({
+          ...definition,
+          kubelet: { extraArgs: [arg] },
+        }),
+      ).toThrow(/name=value/);
+    }
+    for (const arg of [
+      "cloud-provider=external",
+      "provider-id=hcloud://1",
+      "image-gc-high-threshold=90",
+    ]) {
+      expect(() =>
+        normalizeK3sDefinition({
+          ...definition,
+          kubelet: { extraArgs: [arg] },
+        }),
+      ).toThrow(/manages/);
+    }
+  });
+
   it("accepts Traefik Helm values only as JSON objects with Traefik enabled", () => {
     const definition = {
       channel: "v1.35" as const,

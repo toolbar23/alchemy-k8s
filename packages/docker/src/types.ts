@@ -12,6 +12,7 @@ import type {
 export type {
   DayOfWeek,
   K3sDefinition,
+  KubeletSettings,
   UpdateWindow,
 } from "../../shared/src/types.ts";
 

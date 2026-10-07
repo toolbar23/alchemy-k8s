@@ -282,7 +282,13 @@ describe("Hetzner bootstrap", () => {
             hostPublicKey: "ssh-ed25519 host",
           },
         },
-        k3s: definition,
+        k3s: normalizeK3sDefinition({
+          channel: "v1.35",
+          updateWindow: definition.updateWindow,
+          kubelet: {
+            imageGc: { highThresholdPercent: 60, lowThresholdPercent: 40 },
+          },
+        }),
         networkCidr: "10.0.0.0/16",
         apiEndpoint: "203.0.113.3",
         scheduleWorkloadsOnControlPlane: false,
@@ -302,6 +308,9 @@ describe("Hetzner bootstrap", () => {
     );
     expect(script).toContain("INSTALL_K3S_SKIP_START='true'");
     expect(script).toContain("systemctl restart --no-block k3s-agent");
+    expect(script).toContain(
+      "'--kubelet-arg' 'image-gc-high-threshold=60' '--kubelet-arg' 'image-gc-low-threshold=40'",
+    );
   });
 
   it("uses version-gated Secret encryption and parses K3s status safely", () => {

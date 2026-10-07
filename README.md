@@ -160,6 +160,34 @@ leaves cloud-init in the `error` state, which stops provisioning of that node.
 Changing `localDisks` replaces the pool's machines one at a time; pools without
 it keep their machines.
 
+### Kubelet settings
+
+`k3s.kubelet` sets kubelet flags on every node. `imageGc` controls image garbage
+collection: the kubelet deletes unused images when the image filesystem (the
+`containerdGiB` partition with `localDisks`) reaches `highThresholdPercent` and
+stops at `lowThresholdPercent`. The kubelet defaults (85 % and 80 %) free only a
+small slice of a small image disk, so frequent large image updates can reach the
+node's DiskPressure eviction threshold first.
+
+```ts
+k3s: {
+  // ...
+  kubelet: {
+    imageGc: { highThresholdPercent: 60, lowThresholdPercent: 40 },
+    extraArgs: ["max-pods=150"],
+  },
+},
+```
+
+Thresholds are integer percentages with `lowThresholdPercent` below
+`highThresholdPercent`. `extraArgs` are further kubelet flags as `name=value`;
+flags the package manages (`cloud-provider`, `provider-id`, `image-gc-*`) are
+rejected. A change re-runs the K3s installer in place on every existing node
+with the new arguments, existing nodes one at a time: K3s restarts on each node
+while its running containers keep running, and no machine is replaced. The local
+k3d cluster recreates its container with the new flags and keeps its data
+volume.
+
 ### Crash convergence and state boundaries
 
 `alchemy-hetzner-k3s` does not treat the end of an Alchemy provider callback as

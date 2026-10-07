@@ -14,6 +14,7 @@ const props: ClusterStateProps = {
       timeZone: "UTC",
     },
     addons: { traefik: false },
+    kubelet: { imageGc: { highThresholdPercent: 60, lowThresholdPercent: 40 } },
   }),
   apiPort: 6445,
   ports: [{ hostPort: 8080, containerPort: 80 }],
@@ -38,6 +39,8 @@ describe("k3d adapter", () => {
         "8080:80/tcp@loadbalancer",
         "--disable=traefik@server:0",
         "--flannel-backend=vxlan@server:0",
+        "--kubelet-arg=image-gc-high-threshold=60@server:0",
+        "--kubelet-arg=image-gc-low-threshold=40@server:0",
       ]),
     );
   });

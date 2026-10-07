@@ -9,6 +9,7 @@ export type {
   EtcdSnapshotConfig,
   InitialControlPlaneRecovery,
   K3sDefinition,
+  KubeletSettings,
   NodeReference,
   RecoveryFailurePoint,
   WorkerPool,

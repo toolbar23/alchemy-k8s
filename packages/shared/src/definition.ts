@@ -1,6 +1,7 @@
 import type {
   DayOfWeek,
   K3sDefinition,
+  KubeletSettings,
   NormalizedK3sDefinition,
   UpdateWindow,
 } from "./types.ts";
@@ -81,6 +82,43 @@ export const validateUpdateWindow = (window: UpdateWindow): UpdateWindow => {
   return window;
 };
 
+const MANAGED_KUBELET_FLAGS = /^(cloud-provider|provider-id|image-gc-[a-z-]+)=/;
+const KUBELET_FLAG = /^[a-z][a-z0-9-]*=\S*$/;
+
+/** Validates kubelet settings and renders them as `name=value` kubelet flags. */
+export const kubeletArguments = (settings: KubeletSettings = {}): string[] => {
+  const args: string[] = [];
+  if (settings.imageGc !== undefined) {
+    const { highThresholdPercent: high, lowThresholdPercent: low } =
+      settings.imageGc;
+    const percent = (value: number) =>
+      Number.isInteger(value) && value >= 0 && value <= 100;
+    if (!percent(high) || !percent(low) || low >= high) {
+      throw new Error(
+        `kubelet.imageGc thresholds must be integer percentages with lowThresholdPercent < highThresholdPercent; received ${JSON.stringify(settings.imageGc)}`,
+      );
+    }
+    args.push(
+      `image-gc-high-threshold=${high}`,
+      `image-gc-low-threshold=${low}`,
+    );
+  }
+  for (const arg of settings.extraArgs ?? []) {
+    if (!KUBELET_FLAG.test(arg)) {
+      throw new Error(
+        `kubelet.extraArgs entries must be name=value without a leading --; received ${JSON.stringify(arg)}`,
+      );
+    }
+    if (MANAGED_KUBELET_FLAGS.test(arg)) {
+      throw new Error(
+        `kubelet.extraArgs must not set ${JSON.stringify(arg.split("=")[0])}, which the package manages`,
+      );
+    }
+    args.push(arg);
+  }
+  return args;
+};
+
 export const normalizeK3sDefinition = (
   definition: K3sDefinition,
 ): NormalizedK3sDefinition => {
@@ -96,6 +134,7 @@ export const normalizeK3sDefinition = (
       traefikValues: definition.addons?.traefikValues ?? {},
     },
     flannelBackend: definition.flannelBackend ?? "vxlan",
+    kubeletArgs: kubeletArguments(definition.kubelet),
   };
   if (
     normalized.flannelBackend !== "vxlan" &&
