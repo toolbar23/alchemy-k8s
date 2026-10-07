@@ -1,6 +1,6 @@
 {
   "name": "alchemy-s3-access",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Provider-neutral S3 access contract for Alchemy integrations",
   "license": "Apache-2.0",
   "type": "module",
